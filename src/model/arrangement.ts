@@ -9,7 +9,7 @@
  */
 /**
  * One playlist clip within an arrangement. Mirrors FL's on-disk record
- * shape as emitted inside the `0xD9` (the arrangement-playlist event) blob.
+ * shape as emitted inside the `0xE9` arrangement-playlist blob.
  *
  * FL 21+ uses a 60-byte record per clip; earlier FL versions used 32
  * bytes. The decoder auto-detects format by payload-size divisibility.
@@ -34,7 +34,7 @@ export type Clip = {
 };
 
 /**
- * Decode arrangement clips from a `0xD9` payload. Handles both FL 21+
+ * Decode arrangement clips from a `0xE9` payload. Handles both FL 21+
  * (60-byte records, "new" format) and earlier (32-byte records) layouts
  * via size-divisibility auto-detection. Returns an empty array for
  * malformed payloads.
@@ -111,7 +111,7 @@ export type Arrangement = {
   trackCount: number;
   /**
    * Playlist clips on this arrangement's timeline, decoded from
-   * opcode `0xD9`. FL omits the event entirely when there are no
+   * opcode `0xE9`. FL omits the event entirely when there are no
    * clips — so an empty arrangement has `clips === []`, not undefined.
    */
   clips: Clip[];

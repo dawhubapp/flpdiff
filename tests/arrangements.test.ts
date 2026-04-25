@@ -58,7 +58,7 @@ describe("formatArrangementSummary", () => {
   });
 });
 
-describe("Clip decoding — no fixture yet has 0xD9, so all five report empty clips[]", () => {
+describe("Clip decoding — no fixture yet has 0xE9, so all five report empty clips[]", () => {
   test.each(ALL_FIXTURES)("%s: arrangement[0].clips is an empty array", async (name) => {
     const [arrangement] = await insertsOfViaArr(name);
     expect(arrangement).toBeDefined();

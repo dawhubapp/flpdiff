@@ -164,7 +164,7 @@ ts/
    has a zipped channel so no end-to-end path yet.
 4. **Note flags bitmask** — each Note carries `flags: number` raw; bit
    positions (Slide = `1<<3`, etc.) not yet decoded as named booleans.
-5. **Clip-bearing fixtures** — no committed fixture emits `0xD9`
+5. **Clip-bearing fixtures** — no committed fixture emits `0xE9`
    playlist clips or `0x94` time-markers; decoders are unit-tested via
    crafted payloads and will activate automatically when a fixture
    exercises them.

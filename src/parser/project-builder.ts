@@ -120,12 +120,16 @@ const OP_ARRANGEMENT_NAME = 0xf1;
  */
 const OP_TRACK_DATA = 0xee;
 /**
- * the arrangement-playlist event (DATA+25) — array of 32-byte (pre-FL-21) or
+ * Arrangement playlist clips — array of 32-byte (pre-FL-21) or
  * 60-byte (FL 21+) clip records. FL simply omits the event when the
- * arrangement has no clips, so the absence of 0xD9 is a valid
+ * arrangement has no clips, so the absence of `0xE9` is a valid
  * "empty playlist" encoding rather than a parse failure.
+ *
+ * Note: the TS parser historically used 0xD9 here, which was wrong;
+ * the parity harness (tools/parity/) caught the drift on the first
+ * real corpus run.
  */
-const OP_PLAYLIST = 0xd9;
+const OP_PLAYLIST = 0xe9;
 /** Time-marker position (uint32 with high bit 0x08000000 flagging signature markers). */
 const OP_TIMEMARKER_POSITION = 0x94;
 /** Time-marker numerator (u8). Only meaningful for signature markers. */
