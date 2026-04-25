@@ -182,6 +182,23 @@ export type Channel = {
    * the walker treats as "no plugin" and leaves this field undefined.
    */
   plugin?: ChannelPlugin;
+  /**
+   * Whether the channel is audible. Sourced from opcode `0x00` (u8
+   * bool). FL 25 emits this for every channel on save; typical
+   * freshly-saved channels report `enabled: true`.
+   */
+  enabled?: boolean;
+  /**
+   * Sampler ping-pong loop flag. Opcode `0x14` (u8 bool). Default
+   * false; opcode emitted on every channel regardless.
+   */
+  pingPongLoop?: boolean;
+  /**
+   * Whether the user has locked this channel against edits (FL's
+   * padlock icon). Opcode `0x20` (u8 bool, FL 12.3+). Default false;
+   * opcode emitted on every channel on FL 25.
+   */
+  locked?: boolean;
 };
 
 /**

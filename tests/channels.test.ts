@@ -272,6 +272,23 @@ describe("Channel Levels (opcode 0xDB, 24-byte struct)", () => {
   });
 });
 
+describe("Channel BYTE flags — enabled / pingPongLoop / locked", () => {
+  test.each([
+    "base_empty.flp",
+    "base_one_channel.flp",
+    "base_one_insert.flp",
+    "base_one_pattern.flp",
+    "base_one_serum.flp",
+  ])("%s: every channel enabled, not ping-pong, not locked", async (name) => {
+    const channels = await channelsOf(name);
+    for (const ch of channels) {
+      expect(ch.enabled).toBe(true);
+      expect(ch.pingPongLoop).toBe(false);
+      expect(ch.locked).toBe(false);
+    }
+  });
+});
+
 describe("channel iids are contiguous and sequential", () => {
   test.each([
     "base_empty.flp",

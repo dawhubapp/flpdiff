@@ -87,7 +87,7 @@ const ORACLE: Record<string, ProjectSummary> = {
   "base_empty.flp": {
     ppq: 96,
     tempo: 120,
-    channels: [{ iid: 0, kind: "sampler", name: "Sampler", color: DEFAULT_CHANNEL_COLOR, levels: DEFAULT_LEVELS }],
+    channels: [{ iid: 0, kind: "sampler", name: "Sampler", color: DEFAULT_CHANNEL_COLOR, levels: DEFAULT_LEVELS, enabled: true, pingPongLoop: false, locked: false }],
     inserts: DEFAULT_INSERTS,
     patterns: [],
     arrangements: DEFAULT_ARRANGEMENT,
@@ -97,8 +97,8 @@ const ORACLE: Record<string, ProjectSummary> = {
     ppq: 96,
     tempo: 120,
     channels: [
-      { iid: 0, kind: "sampler", name: "Sampler", color: DEFAULT_CHANNEL_COLOR, levels: DEFAULT_LEVELS },
-      { iid: 1, kind: "sampler", name: "Kick", sample_path: FACTORY_909_KICK, color: CHANNEL2_COLOR, levels: DEFAULT_LEVELS },
+      { iid: 0, kind: "sampler", name: "Sampler", color: DEFAULT_CHANNEL_COLOR, levels: DEFAULT_LEVELS, enabled: true, pingPongLoop: false, locked: false },
+      { iid: 1, kind: "sampler", name: "Kick", sample_path: FACTORY_909_KICK, color: CHANNEL2_COLOR, levels: DEFAULT_LEVELS, enabled: true, pingPongLoop: false, locked: false },
     ],
     inserts: DEFAULT_INSERTS,
     patterns: [],
@@ -108,7 +108,7 @@ const ORACLE: Record<string, ProjectSummary> = {
   "base_one_insert.flp": {
     ppq: 96,
     tempo: 120,
-    channels: [{ iid: 0, kind: "sampler", name: "Sampler", color: DEFAULT_CHANNEL_COLOR, levels: DEFAULT_LEVELS }],
+    channels: [{ iid: 0, kind: "sampler", name: "Sampler", color: DEFAULT_CHANNEL_COLOR, levels: DEFAULT_LEVELS, enabled: true, pingPongLoop: false, locked: false }],
     inserts: DEFAULT_INSERTS.map((ins, i) =>
       i === 1
         ? {
@@ -130,8 +130,8 @@ const ORACLE: Record<string, ProjectSummary> = {
     ppq: 96,
     tempo: 120,
     channels: [
-      { iid: 0, kind: "sampler", name: "Sampler", color: DEFAULT_CHANNEL_COLOR, levels: DEFAULT_LEVELS },
-      { iid: 1, kind: "sampler", name: "Kick", sample_path: FACTORY_909_KICK, color: CHANNEL2_COLOR, levels: DEFAULT_LEVELS },
+      { iid: 0, kind: "sampler", name: "Sampler", color: DEFAULT_CHANNEL_COLOR, levels: DEFAULT_LEVELS, enabled: true, pingPongLoop: false, locked: false },
+      { iid: 1, kind: "sampler", name: "Kick", sample_path: FACTORY_909_KICK, color: CHANNEL2_COLOR, levels: DEFAULT_LEVELS, enabled: true, pingPongLoop: false, locked: false },
     ],
     inserts: DEFAULT_INSERTS,
     patterns: [
@@ -167,7 +167,7 @@ const ORACLE: Record<string, ProjectSummary> = {
     ppq: 96,
     tempo: 120,
     channels: [
-      { iid: 0, kind: "sampler", name: "Sampler", color: DEFAULT_CHANNEL_COLOR, levels: DEFAULT_LEVELS },
+      { iid: 0, kind: "sampler", name: "Sampler", color: DEFAULT_CHANNEL_COLOR, levels: DEFAULT_LEVELS, enabled: true, pingPongLoop: false, locked: false },
       {
         iid: 1,
         kind: "instrument",
@@ -179,6 +179,9 @@ const ORACLE: Record<string, ProjectSummary> = {
         },
         color: DEFAULT_CHANNEL_COLOR,
         levels: DEFAULT_LEVELS,
+        enabled: true,
+        pingPongLoop: false,
+        locked: false,
       },
     ],
     inserts: DEFAULT_INSERTS,

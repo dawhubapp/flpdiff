@@ -15,6 +15,12 @@ import { type Arrangement, type TimeMarker, decodeClips, decodeTimeMarkerPositio
  */
 const OP_NEW_CHANNEL = 0x40;
 const OP_CHANNEL_TYPE = 0x15;
+/** Channel "is enabled" flag (u8 bool). Emitted per channel. */
+const OP_CHANNEL_ENABLED = 0x00;
+/** Channel ping-pong loop flag (u8 bool). */
+const OP_CHANNEL_PING_PONG = 0x14;
+/** Channel "is locked" flag (u8 bool, FL 12.3+). */
+const OP_CHANNEL_LOCKED = 0x20;
 const OP_CHANNEL_SAMPLE_PATH = 0xc4;
 /** Plugin internal-class name (UTF-16LE). On a bare sampler channel
  *  FL emits this as an empty string. */
@@ -165,6 +171,18 @@ export function buildChannels(events: readonly FLPEvent[]): Channel[] {
 
     if (ev.opcode === OP_CHANNEL_TYPE && ev.kind === "u8") {
       current.kind = classifyChannelKind(ev.value);
+      continue;
+    }
+    if (ev.opcode === OP_CHANNEL_ENABLED && ev.kind === "u8" && current.enabled === undefined) {
+      current.enabled = ev.value !== 0;
+      continue;
+    }
+    if (ev.opcode === OP_CHANNEL_PING_PONG && ev.kind === "u8" && current.pingPongLoop === undefined) {
+      current.pingPongLoop = ev.value !== 0;
+      continue;
+    }
+    if (ev.opcode === OP_CHANNEL_LOCKED && ev.kind === "u8" && current.locked === undefined) {
+      current.locked = ev.value !== 0;
       continue;
     }
     if (ev.opcode === OP_PLUGIN_COLOR && ev.kind === "u32" && current.color === undefined) {

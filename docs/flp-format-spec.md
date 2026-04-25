@@ -112,10 +112,13 @@ output on all five FL 25 public fixtures.
 
 | Opcode | Kind | Semantic | Payload layout | Notes |
 |--------|------|----------|----------------|-------|
-| `0x15` | BYTE (u8) | Channel type | See kind table below | Applies to the channel opened by the most-recent `0x40`. Values: 0=sampler, 2=instrument (the reference parser "Native"), 3=layer, 4=instrument, 5=automation. |
+| `0x00` | BYTE (u8) | Channel IsEnabled | bool | Emitted on every channel in FL 25 saves; defaults true. |
+| `0x14` | BYTE (u8) | Channel PingPongLoop | bool | Default false; opcode emitted on every channel. |
+| `0x15` | BYTE (u8) | Channel type | See kind table below | Applies to the channel opened by the most-recent `0x40`. Values: 0=sampler, 2=instrument (FL labels this "Native"), 3=layer, 4=instrument, 5=automation. |
 | `0x36` | FL25 override (`utf16_zterm`) | FL version banner | UTF-16LE null-terminated | Full product-edition-and-version label, e.g. `"FL Studio 25.2.4.4960.4960\0"`. See §2.2. |
 | `0x40` | WORD (u16 LE) | New channel | Channel iid (uint16) | Announces a new channel. Subsequent channel-scoped events up to the next `0x40` belong to this iid. iids are contiguous `0..n-1` across the project. |
 | `0x41` | WORD (u16 LE) | Pattern identity marker | Pattern id (uint16) | Announces the current pattern id. **Fires twice per pattern** (once for note/controller grouping, once for other props) — walkers must dedup by id rather than treating each occurrence as a new pattern. |
+| `0x20` | BYTE (u8) | Channel IsLocked | bool | FL 12.3+. Default false; opcode emitted on every channel. |
 | `0x21` | BYTE (u8) | TimeMarker numerator | uint8 | Only meaningful for `signature`-kind markers (part of a time-signature change). |
 | `0x22` | BYTE (u8) | TimeMarker denominator | uint8 | Same as 0x21 — only for signature markers. |
 | `0x5F` | WORD (u16 LE) | Insert icon id | int16 | FL only emits when the user has explicitly set a custom icon; default inserts omit this entirely. |

@@ -33,6 +33,9 @@ export type ChannelSummary = {
   plugin?: { internalName: string; name?: string; vendor?: string };
   color?: RGBA;
   levels?: Levels;
+  enabled?: boolean;
+  pingPongLoop?: boolean;
+  locked?: boolean;
 };
 
 export type SlotSummary = {
@@ -95,6 +98,9 @@ function pickChannel(ch: FLPProject["channels"][number]): ChannelSummary {
   }
   if (ch.color !== undefined) out.color = { ...ch.color };
   if (ch.levels !== undefined) out.levels = { ...ch.levels };
+  if (ch.enabled !== undefined) out.enabled = ch.enabled;
+  if (ch.pingPongLoop !== undefined) out.pingPongLoop = ch.pingPongLoop;
+  if (ch.locked !== undefined) out.locked = ch.locked;
   return out;
 }
 
