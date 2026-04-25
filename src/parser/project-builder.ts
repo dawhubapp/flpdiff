@@ -225,6 +225,21 @@ export function buildChannels(events: readonly FLPEvent[]): Channel[] {
       current.name = decodeUtf16LeBytes(ev.payload);
       continue;
     }
+    // scope hygiene: `current` loses channel-scope events once we cross
+    // into a slot pack, but that's intentional — slot content is handled
+    // by buildMixerInserts.
+  }
+
+  // Reference-parser rule: `channel-type enum == Instrument (4)` is FL's placeholder for
+  // "audio clip slot before a sample is loaded" as well as for real VST
+  // instrument channels. When the channel also has a SamplePath and no
+  // plugin (empty channel-level 0xC9), the reference parser reclassifies it as Sampler.
+  // Mirror that here so channel_kinds counts match Python on real
+  // corpora. See `the reference parser/channel.py::the channel iterator`.
+  for (const ch of channels) {
+    if (ch.kind === "instrument" && ch.sample_path !== undefined && ch.plugin === undefined) {
+      ch.kind = "sampler";
+    }
   }
 
   return channels;
