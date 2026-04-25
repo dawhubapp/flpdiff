@@ -46,6 +46,9 @@ export type InsertSummary = {
 export type PatternSummary = {
   id: number;
   name?: string;
+  length?: number;
+  color?: RGBA;
+  looped?: boolean;
   notes: Note[];
 };
 
@@ -99,6 +102,9 @@ function pickInsert(ins: FLPProject["inserts"][number]): InsertSummary {
 function pickPattern(p: FLPProject["patterns"][number]): PatternSummary {
   const out: PatternSummary = { id: p.id, notes: p.notes.map((n) => ({ ...n })) };
   if (p.name !== undefined) out.name = p.name;
+  if (p.length !== undefined) out.length = p.length;
+  if (p.color !== undefined) out.color = { ...p.color };
+  if (p.looped !== undefined) out.looped = p.looped;
   return out;
 }
 

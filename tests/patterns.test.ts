@@ -53,6 +53,18 @@ describe("Pattern-identity dedup — the 'fires twice' rule", () => {
   });
 });
 
+describe("Pattern length / color / looped", () => {
+  test("base_one_pattern.flp: length=0, explicit color set, not looped", async () => {
+    const patterns = await patternsOf("base_one_pattern.flp");
+    const p = patterns[0]!;
+    expect(p.length).toBe(0);
+    expect(p.color).toEqual({ r: 52, g: 57, b: 58, a: 0 });
+    // FL omits 0x1A when looped=false, so the field stays undefined —
+    // which callers should interpret as "not looped".
+    expect(p.looped).toBeUndefined();
+  });
+});
+
 describe("formatPatternSummary — plural correctness", () => {
   test("0 → '0 patterns'", () => {
     expect(formatPatternSummary([])).toBe("0 patterns");

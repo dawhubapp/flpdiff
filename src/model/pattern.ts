@@ -46,6 +46,26 @@ export type Pattern = {
   id: number;
   /** User-set pattern name, from opcode `0xC1`. */
   name?: string;
+  /**
+   * Pattern length in PPQ ticks, from opcode `0xA4`.
+   * Value `0` means "use the project's default bar length" — FL omits
+   * an explicit length for unmodified patterns and Python flp-info
+   * also reports `0` in that case.
+   */
+  length?: number;
+  /**
+   * Pattern color, from opcode `0x96` (uint32 LE with bytes in
+   * `[R, G, B, A]` order — same packing as channel color). Absent
+   * if FL hasn't emitted an explicit color event (colors show up
+   * only once a user has touched them on this pattern).
+   */
+  color?: { r: number; g: number; b: number; a: number };
+  /**
+   * `true` only when FL emitted a `0x1A` (pattern looped flag, bool)
+   * event with value=1 on this pattern. Patterns default to
+   * non-looped, and the opcode is simply absent in that case.
+   */
+  looped?: boolean;
   /** Notes placed on the pattern, in stream order. Empty for patterns with no notes yet. */
   notes: Note[];
 };

@@ -2,6 +2,7 @@ import type { FLPEvent } from "./event.ts";
 import { decodeUtf16LeBytes } from "./primitives.ts";
 import { decodeVSTWrapper } from "./vst-wrapper.ts";
 import { type Channel, classifyChannelKind, unpackRGBA } from "../model/channel.ts";
+// unpackRGBA is re-used for pattern color (0x96) — same byte packing as 0x80.
 import type { MixerInsert, MixerSlot } from "../model/mixer-insert.ts";
 import { type Pattern, decodeNotes } from "../model/pattern.ts";
 import type { Arrangement } from "../model/arrangement.ts";
@@ -62,6 +63,12 @@ const OP_PATTERN_NAME = 0xc1;
  * note records; see `decodeNotes`.
  */
 const OP_PATTERN_NOTES = 0xe0;
+/** Pattern color (uint32 LE, RGBA byte-packed per unpackRGBA). */
+const OP_PATTERN_COLOR = 0x96;
+/** Pattern length (uint32 LE, length in PPQ ticks). Zero = default. */
+const OP_PATTERN_LENGTH = 0xa4;
+/** Pattern looped flag (u8 bool). Only emitted when looped=true. */
+const OP_PATTERN_LOOPED = 0x1a;
 /**
  * Arrangement identity marker (uint16 LE id). FL 25 base projects
  * have exactly one, id=0, default name "Arrangement".
@@ -266,6 +273,23 @@ export function buildPatterns(events: readonly FLPEvent[]): Pattern[] {
         // stream order — preserves timeline ordering.
         for (const note of decodeNotes(ev.payload)) p.notes.push(note);
       }
+      continue;
+    }
+    if (ev.opcode === OP_PATTERN_COLOR && ev.kind === "u32" && currentId !== undefined) {
+      const p = byId.get(currentId);
+      if (p && p.color === undefined) p.color = unpackRGBA(ev.value);
+      continue;
+    }
+    if (ev.opcode === OP_PATTERN_LENGTH && ev.kind === "u32" && currentId !== undefined) {
+      const p = byId.get(currentId);
+      if (p && p.length === undefined) p.length = ev.value;
+      continue;
+    }
+    if (ev.opcode === OP_PATTERN_LOOPED && ev.kind === "u8" && currentId !== undefined) {
+      const p = byId.get(currentId);
+      // FL emits 0x1A only for looped patterns (value=1). A missing
+      // event means `looped` stays undefined (default false).
+      if (p && p.looped === undefined) p.looped = ev.value !== 0;
       continue;
     }
   }

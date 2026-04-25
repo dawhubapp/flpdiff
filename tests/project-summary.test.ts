@@ -104,6 +104,8 @@ const ORACLE: Record<string, ProjectSummary> = {
       {
         id: 1,
         name: "P1",
+        length: 0,
+        color: { r: 52, g: 57, b: 58, a: 0 },
         notes: [
           {
             position: 0,
