@@ -115,10 +115,12 @@ output on all five FL 25 public fixtures.
 | `0x15` | BYTE (u8) | Channel type | See kind table below | Applies to the channel opened by the most-recent `0x40`. Values: 0=sampler, 2=instrument (the reference parser "Native"), 3=layer, 4=instrument, 5=automation. |
 | `0x36` | FL25 override (`utf16_zterm`) | FL version banner | UTF-16LE null-terminated | Full product-edition-and-version label, e.g. `"FL Studio 25.2.4.4960.4960\0"`. See §2.2. |
 | `0x40` | WORD (u16 LE) | New channel | Channel iid (uint16) | Announces a new channel. Subsequent channel-scoped events up to the next `0x40` belong to this iid. iids are contiguous `0..n-1` across the project. |
+| `0x41` | WORD (u16 LE) | Pattern identity marker | Pattern id (uint16) | Announces the current pattern id. **Fires twice per pattern** (once for note/controller grouping, once for other props) — walkers must dedup by id rather than treating each occurrence as a new pattern. |
 | `0x93` | DWORD (u32 LE) | Mixer insert boundary (close) | Ignored | Closes the currently-being-built mixer insert. Unlike `0x40` which *opens* a channel, `0x93` *ends* an insert — events prior to each `0x93` belong to that insert. The count of `0x93` events equals the project's active-insert count (18 on a freshly-saved FL 25 base). |
 | `0x9C` | DWORD (u32 LE) | Tempo | `bpm × 1000` | `120000` → 120.0 BPM. Verified via `cycle.py` sweeps at 100/120/130/145/160 BPM (dev repo's `docs/fl25-event-format.md`). |
 | `0x9F` | DWORD (u32 LE) | FL build number | uint32 | Value `4960` corresponds to FL Studio 25.2.4 build 4960. |
 | `0x62` | WORD (u16 LE) | New mixer effect slot | Slot index (uint16) | Announces a new effect slot within a mixer insert. From the channel walker's perspective, this marks the end of channel-scoped events — subsequent shared-opcode events (e.g., `0xCB` below) belong to the slot's plugin, not to a channel. |
+| `0xC1` | DATA (varint + bytes) | Pattern name | Null-terminated UTF-16LE | User-set pattern name (e.g. `"P1"`). Absent for unnamed patterns. Scoped to the pattern id most recently announced by `0x41`. |
 | `0xC4` | DATA (varint + bytes) | Channel sample path | Null-terminated UTF-16LE | Full library path for the current channel's sample, e.g. `"%FLStudioFactoryData%/Data/Patches/Packs/Drums/Kicks/909 Kick.wav\0"`. Absent when the channel has no sample loaded (non-sampler kinds, or samplers before a file is dragged in). Scoped to the channel opened by the most-recent `0x40`. |
 | `0xC7` | DATA (varint + bytes) | FL version (ASCII) | Null-terminated ASCII | `"25.2.4.4960\0"`, 12 bytes on FL 25.2.4. Duplicated by the UTF-16 banner at `0x36` — the two strings serve different consumers. |
 | `0xCB` | DATA (varint + bytes) | Channel/slot name (shared) | Null-terminated UTF-16LE | **Scope-sensitive.** In channel scope (after `0x40`, before any `0x62`) it's the channel name, e.g. `"Sampler"` / `"Kick"` / `"SerumTest"`. In slot scope (after `0x62`) it's the hosted plugin's display name, e.g. `"Fruity Parametric EQ 2"`. Walkers must track the current scope to attribute correctly. |
@@ -279,3 +281,8 @@ Future additions to this spec should follow the same pattern:
   `flp-info`). `0xCC` attribution is unambiguous — separate opcode
   from `0xCB` — so insert names don't need the scope machinery
   that channel/slot names do.
+- **2026-04-18** (late night) — Added `0x41` (the pattern-identity event, the
+  fires-twice identity marker) and `0xC1` (the pattern-name event). First
+  Phase 3.3.2 opcodes. Pattern walker dedups `0x41` by id rather
+  than treating each occurrence as a new entity — critical, since
+  a single pattern always produces two `0x41` events in the stream.

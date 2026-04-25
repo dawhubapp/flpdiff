@@ -2,6 +2,7 @@ import type { FLPEvent } from "./event.ts";
 import { decodeUtf16LeBytes } from "./primitives.ts";
 import { type Channel, classifyChannelKind } from "../model/channel.ts";
 import type { MixerInsert } from "../model/mixer-insert.ts";
+import type { Pattern } from "../model/pattern.ts";
 
 /**
  * Opcode constants for the entity-boundary events. Each is a format fact
@@ -25,6 +26,14 @@ const OP_NEW_SLOT = 0x62;
 const OP_INSERT_END = 0x93;
 /** Per-insert name (UTF-16LE null-terminated). */
 const OP_INSERT_NAME = 0xcc;
+/**
+ * Pattern identity marker (uint16 LE). FL emits this event twice
+ * per pattern (once for note/controller events, once for the rest);
+ * the walker dedupes by pattern id.
+ */
+const OP_PATTERN_NEW = 0x41;
+/** Per-pattern name (UTF-16LE null-terminated). */
+const OP_PATTERN_NAME = 0xc1;
 
 /**
  * Walks the event stream and accumulates channels.
@@ -112,4 +121,40 @@ export function buildMixerInserts(events: readonly FLPEvent[]): MixerInsert[] {
   }
 
   return inserts;
+}
+
+/**
+ * Walks the event stream and accumulates patterns.
+ *
+ * Pattern-identity rule: opcode `0x41` carries the FL-assigned
+ * pattern id as its uint16 value. FL emits this event **twice per
+ * pattern** (once to group note/controller events, once for the
+ * rest), so the walker tracks "current pattern id" and upserts a
+ * single entity per distinct id.
+ *
+ * Name attribution: opcode `0xC1` (UTF-16LE null-terminated) applies
+ * to the pattern whose id was most recently announced by a `0x41`.
+ * Distinct opcode from channel/insert names, so no scope ambiguity.
+ *
+ * Preserves raw pattern ids (may be sparse — users can delete middle
+ * patterns leaving gaps) and iteration order (first-seen).
+ */
+export function buildPatterns(events: readonly FLPEvent[]): Pattern[] {
+  const byId = new Map<number, Pattern>();
+  let currentId: number | undefined;
+
+  for (const ev of events) {
+    if (ev.opcode === OP_PATTERN_NEW && ev.kind === "u16") {
+      currentId = ev.value;
+      if (!byId.has(currentId)) byId.set(currentId, { id: currentId });
+      continue;
+    }
+    if (ev.opcode === OP_PATTERN_NAME && ev.kind === "blob" && currentId !== undefined) {
+      const p = byId.get(currentId);
+      if (p && p.name === undefined) p.name = decodeUtf16LeBytes(ev.payload);
+      continue;
+    }
+  }
+
+  return [...byId.values()];
 }

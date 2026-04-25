@@ -3,9 +3,10 @@ import type { ISerialInput } from "typed-binary";
 import { annotateRead, FLPParseError } from "./errors.ts";
 import { flpEvent, type FLPEvent } from "./event.ts";
 import { decodeUtf16LeBytes } from "./primitives.ts";
-import { buildChannels, buildMixerInserts } from "./project-builder.ts";
+import { buildChannels, buildMixerInserts, buildPatterns } from "./project-builder.ts";
 import type { Channel } from "../model/channel.ts";
 import type { MixerInsert } from "../model/mixer-insert.ts";
+import type { Pattern } from "../model/pattern.ts";
 
 /**
  * FLP file header parsed from "FLhd" + "FLdt" blocks.
@@ -25,6 +26,7 @@ export type FLPProject = {
   events: FLPEvent[];
   channels: Channel[];
   inserts: MixerInsert[];
+  patterns: Pattern[];
 };
 
 const FLHD_MAGIC = [0x46, 0x4c, 0x68, 0x64]; // "FLhd"
@@ -88,7 +90,8 @@ export function parseFLPFile(buffer: ArrayBufferLike): FLPProject {
 
     const channels = buildChannels(events);
     const inserts = buildMixerInserts(events);
-    return { header, events, channels, inserts };
+    const patterns = buildPatterns(events);
+    return { header, events, channels, inserts, patterns };
   });
 }
 

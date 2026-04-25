@@ -12,3 +12,5 @@ export {
 } from "./model/channel.ts";
 export type { MixerInsert } from "./model/mixer-insert.ts";
 export { countNamedInserts, formatMixerSummary } from "./model/mixer-insert.ts";
+export type { Pattern } from "./model/pattern.ts";
+export { formatPatternSummary } from "./model/pattern.ts";
