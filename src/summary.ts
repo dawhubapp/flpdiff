@@ -42,6 +42,10 @@ export type SlotSummary = {
 export type InsertSummary = {
   index: number;
   name?: string;
+  color?: RGBA;
+  icon?: number;
+  output?: number;
+  input?: number;
   slots: SlotSummary[];
 };
 
@@ -100,6 +104,10 @@ function pickInsert(ins: FLPProject["inserts"][number]): InsertSummary {
     }),
   };
   if (ins.name !== undefined) out.name = ins.name;
+  if (ins.color !== undefined) out.color = { ...ins.color };
+  if (ins.icon !== undefined) out.icon = ins.icon;
+  if (ins.output !== undefined) out.output = ins.output;
+  if (ins.input !== undefined) out.input = ins.input;
   return out;
 }
 

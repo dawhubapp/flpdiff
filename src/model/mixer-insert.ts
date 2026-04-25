@@ -37,6 +37,30 @@ export type MixerInsert = {
    */
   name?: string;
   /**
+   * Insert color (RGBA). Sourced from opcode `0x95` (uint32 LE with
+   * bytes in `[R, G, B, A]` order — same packing as `0x80`). FL only
+   * emits this event when the user explicitly sets a custom color;
+   * default-colored inserts leave the field undefined.
+   */
+  color?: { r: number; g: number; b: number; a: number };
+  /**
+   * Insert icon id. Sourced from opcode `0x5F` (int16 LE). Absent
+   * when the user hasn't picked an explicit icon.
+   */
+  icon?: number;
+  /**
+   * Output routing target — the mixer-insert index this insert feeds
+   * into. Sourced from the `0x93` event's payload (int32 LE).
+   * `undefined` when FL emits `-1` (= 0xFFFFFFFF, the "unrouted /
+   * default master" sentinel).
+   */
+  output?: number;
+  /**
+   * Audio-input source. Sourced from `0x9A` (int32 LE). `undefined`
+   * when FL emits the `-1` sentinel.
+   */
+  input?: number;
+  /**
    * Effect slots on this insert, in declaration order. FL 25 always
    * emits 10 slots per insert; empty slots have `pluginName === undefined`.
    */

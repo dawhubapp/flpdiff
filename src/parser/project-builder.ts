@@ -47,12 +47,21 @@ const OP_NAME = 0xcb;
  *  current-scope to "slot", ending channel attribution for subsequent
  *  0xCB events. */
 const OP_NEW_SLOT = 0x62;
-/** Mixer insert boundary (the insert-output event, uint32 LE). Each 0x93 closes
- *  the current insert; the total count matches FL's "active inserts"
- *  number (18 on a freshly-saved base project). */
+/** Mixer insert boundary (uint32 LE). Each 0x93 closes the current
+ *  insert; the total count matches FL's "active inserts" number
+ *  (18 on a freshly-saved base project). The event's VALUE is the
+ *  insert's output-routing target (int32; -1 = default). */
 const OP_INSERT_END = 0x93;
 /** Per-insert name (UTF-16LE null-terminated). */
 const OP_INSERT_NAME = 0xcc;
+/** Insert color (uint32 LE RGBA-packed). */
+const OP_INSERT_COLOR = 0x95;
+/** Insert icon id (int16 LE). */
+const OP_INSERT_ICON = 0x5f;
+/** Insert audio input source (int32 LE, -1 sentinel). */
+const OP_INSERT_INPUT = 0x9a;
+/** Int32 value indicating "no explicit routing" — stored as 0xFFFFFFFF (-1 signed). */
+const ROUTING_UNSET = 0xffffffff;
 /**
  * Pattern identity marker (uint16 LE). FL emits this event twice
  * per pattern (once for note/controller events, once for the rest);
@@ -216,8 +225,19 @@ export function buildMixerInserts(events: readonly FLPEvent[]): MixerInsert[] {
   let inMixerSection = false;
 
   for (const ev of events) {
-    if (ev.opcode === OP_INSERT_END) {
+    if (ev.opcode === OP_INSERT_END && ev.kind === "u32") {
       inMixerSection = true;
+      // The 0x93 value IS the output-routing target. Two default
+      // sentinels in the wild:
+      //   - `-1` / 0xFFFFFFFF — standard "no route, implicit to master"
+      //   - value === insert.index — master (index 0) outputs to 0
+      //     as its own default. Python flp-info treats this as
+      //     "no user-set routing" and reports None; we mirror that.
+      // Anything else is a genuine routing override that diffs
+      // should surface.
+      if (ev.value !== ROUTING_UNSET && ev.value !== pendingInsert.index) {
+        pendingInsert.output = ev.value;
+      }
       // pendingSlot at this point holds any trailing insert-level
       // events (routing etc.) that fire after the last 0x62 — drop
       // those; they don't belong to any slot.
@@ -236,6 +256,18 @@ export function buildMixerInserts(events: readonly FLPEvent[]): MixerInsert[] {
     if (ev.opcode === OP_INSERT_NAME && ev.kind === "blob" && pendingInsert.name === undefined) {
       inMixerSection = true;
       pendingInsert.name = decodeUtf16LeBytes(ev.payload);
+      continue;
+    }
+    if (ev.opcode === OP_INSERT_COLOR && ev.kind === "u32" && pendingInsert.color === undefined && inMixerSection) {
+      pendingInsert.color = unpackRGBA(ev.value);
+      continue;
+    }
+    if (ev.opcode === OP_INSERT_ICON && ev.kind === "u16" && pendingInsert.icon === undefined && inMixerSection) {
+      pendingInsert.icon = ev.value;
+      continue;
+    }
+    if (ev.opcode === OP_INSERT_INPUT && ev.kind === "u32" && pendingInsert.input === undefined && inMixerSection) {
+      if (ev.value !== ROUTING_UNSET) pendingInsert.input = ev.value;
       continue;
     }
     if (

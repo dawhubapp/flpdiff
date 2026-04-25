@@ -64,6 +64,24 @@ describe("Insert names (opcode 0xCC)", () => {
   });
 });
 
+describe("Insert color/icon/routing defaults (0x95, 0x5F, 0x93, 0x9A)", () => {
+  test.each([
+    "base_empty.flp",
+    "base_one_channel.flp",
+    "base_one_insert.flp",
+    "base_one_pattern.flp",
+    "base_one_serum.flp",
+  ])("%s: every insert has default color/icon/routing (undefined)", async (name) => {
+    const inserts = await insertsOf(name);
+    for (const ins of inserts) {
+      expect(ins.color).toBeUndefined();
+      expect(ins.icon).toBeUndefined();
+      expect(ins.output).toBeUndefined();
+      expect(ins.input).toBeUndefined();
+    }
+  });
+});
+
 describe("Mixer slots (opcode 0x62) — 10 slots per insert", () => {
   test.each(ALL_FIXTURES)("%s: every insert has 10 slots", async (name) => {
     const inserts = await insertsOf(name);

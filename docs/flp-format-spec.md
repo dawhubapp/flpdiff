@@ -116,7 +116,10 @@ output on all five FL 25 public fixtures.
 | `0x36` | FL25 override (`utf16_zterm`) | FL version banner | UTF-16LE null-terminated | Full product-edition-and-version label, e.g. `"FL Studio 25.2.4.4960.4960\0"`. See §2.2. |
 | `0x40` | WORD (u16 LE) | New channel | Channel iid (uint16) | Announces a new channel. Subsequent channel-scoped events up to the next `0x40` belong to this iid. iids are contiguous `0..n-1` across the project. |
 | `0x41` | WORD (u16 LE) | Pattern identity marker | Pattern id (uint16) | Announces the current pattern id. **Fires twice per pattern** (once for note/controller grouping, once for other props) — walkers must dedup by id rather than treating each occurrence as a new pattern. |
-| `0x93` | DWORD (u32 LE) | Mixer insert boundary (close) | Ignored | Closes the currently-being-built mixer insert. Unlike `0x40` which *opens* a channel, `0x93` *ends* an insert — events prior to each `0x93` belong to that insert. The count of `0x93` events equals the project's active-insert count (18 on a freshly-saved FL 25 base). |
+| `0x5F` | WORD (u16 LE) | Insert icon id | int16 | FL only emits when the user has explicitly set a custom icon; default inserts omit this entirely. |
+| `0x93` | DWORD (u32 LE) | Mixer insert output routing + boundary (close) | int32 target index | Dual role: **closes** the currently-being-built insert (walker boundary) AND carries the insert's output-routing target as value. Two default sentinels in the wild: `-1` (0xFFFFFFFF, "no explicit route, defaults to master") and `value === insert.index` (master routing to itself). Both are "default" and should suppress to undefined in downstream summaries; other values are user-set overrides. |
+| `0x95` | DWORD (u32 LE) | Insert color | RGBA packed LE | Same byte packing as `0x80`. Absent unless user set a color on this insert. |
+| `0x9A` | DWORD (u32 LE) | Insert audio input source | int32 | Same `-1` default-sentinel semantics as `0x93`. |
 | `0x80` | DWORD (u32 LE) | Plugin/channel color | RGBA packed LE | Low byte is R, then G, B, A — reading as uint32 LE and extracting bytes via `value & 0xFF`, `(value >> 8) & 0xFF`, etc. FL's default channel color is `0x00484541` → `{r: 65, g: 69, b: 72, a: 0}`. Shared between channels and mixer-slot plugins; scope gating (channel vs slot) keeps attribution clean. |
 | `0x96` | DWORD (u32 LE) | Pattern color | RGBA packed LE | the pattern-color event. Same byte packing as `0x80`. Only emitted when the user has touched the pattern's color — otherwise absent. |
 | `0x1A` | BYTE (u8) | Pattern looped flag | bool (0/1) | the pattern-looped event. FL only emits this opcode when the pattern is actually looped; an unlooped pattern gets no event and consumers must default to `false`. |
@@ -311,6 +314,14 @@ Future additions to this spec should follow the same pattern:
   insert (slots 0..9), even for empty slots. Mixer walker now
   accumulates a `pendingSlot` and pushes it to the insert's
   slots[] on each `0x62`, using the `0x62` value as the slot index.
+- **2026-04-20** — Added insert-level opcodes beyond Name:
+  `0x95` (color, RGBA uint32), `0x5F` (icon id, int16), `0x9A`
+  (audio input, int32 with `-1` sentinel), and routing via the
+  existing `0x93` event's value (also int32 with `-1` or
+  "self-index" sentinels). None fire with non-default values on
+  the 5 current fixtures — all handlers are in place and
+  regression-tested, activating automatically on future fixtures
+  that exercise mixer routing.
 - **2026-04-19** (end of day) — Added `0xDB` channel Levels
   decoder. One 24-byte blob per channel with `int32 pan`,
   `uint32 volume`, `int32 pitch_shift`, `uint32 filter_mod_x/y`,
