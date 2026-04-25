@@ -127,6 +127,7 @@ output on all five FL 25 public fixtures.
 | `0x63` | WORD (u16 LE) | Arrangement identity marker | Arrangement id (uint16) | Announces a new playlist arrangement. FL 25 base projects have exactly one with id=0. Subsequent arrangement-scoped events (name, track descriptors) belong to the most-recently-announced arrangement. |
 | `0xC1` | DATA (varint + bytes) | Pattern name | Null-terminated UTF-16LE | User-set pattern name (e.g. `"P1"`). Absent for unnamed patterns. Scoped to the pattern id most recently announced by `0x41`. |
 | `0xC9` | DATA (varint + bytes) | Plugin internal class name | Null-terminated UTF-16LE | the plugin internal-name event — FL's identifier for the plugin's wrapper class. For native plugins (e.g. mixer-slot Fruity EQ 2) this matches the display name. For VST-wrapped channel-hosted plugins the payload is `"Fruity Wrapper"` (generic FL VST host); the real VST name (`"Serum"`, etc.) lives inside the `0xD5` plugin-state blob — see below. Sampler channels emit an empty `0xC9` as a placeholder — walkers should treat zero-length payloads as "no plugin". |
+| `0xD9` | DATA (varint + bytes) | Arrangement playlist clips | Dense array of 60-byte records (FL 21+) or 32-byte records (earlier) | the arrangement-playlist event. **Simply absent when the arrangement has no clips** — the empty-playlist case produces no event rather than a zero-record blob. Each FL 21+ record: `uint32 position`, `uint16 pattern_base` (always 20480), `uint16 item_index`, `uint32 length`, `uint16 track_rvidx` (stored reversed), `uint16 group`, 2 reserved bytes, `uint16 item_flags`, 4 reserved bytes, `float32 start_offset`, `float32 end_offset`, 28 trailing reserved bytes. |
 | `0xD5` | DATA (varint + bytes) | Plugin state blob | Plugin-specific binary | the plugin-state event. For **VST-wrapped** plugins (internalName `"Fruity Wrapper"`) the payload is the FL VST-wrapper record stream: 4-byte `type` header (first byte = FL serialization marker, one of 6/8/9/10/11/12), then repeating `{uint32 id, uint64 len, N bytes data}` records. Relevant record ids: 54=Name (UTF-8), 56=Vendor (UTF-8), 55=PluginPath, 51=FourCC, 52=GUID, 53=State (opaque preset data). For **native** FL plugins (e.g. Fruity Parametric EQ 2) the payload is plugin-specific state — the VST-wrapper record format does not apply; decode per-plugin. |
 | `0xE0` | DATA (varint + bytes) | Pattern notes (FL 25) | Dense array of 24-byte records | the pattern-notes event on FL 25. **the reference parser lists this at `DATA+16 = 0xD0`, but FL 25 saves emit notes at `DATA+32 = 0xE0`** — another self-discovered FL 25 opcode relocation (alongside the `0xEE` track-data move). Each record: `uint32 position`, `uint16 flags`, `uint16 rack_channel`, `uint32 length`, `uint16 key`, `uint16 group`, `uint8 fine_pitch`, `uint8 _reserved`, `uint8 release`, `uint8 midi_channel`, `uint8 pan`, `uint8 velocity`, `uint8 mod_x`, `uint8 mod_y`. All lengths in PPQ ticks. |
 | `0xC4` | DATA (varint + bytes) | Channel sample path | Null-terminated UTF-16LE | Full library path for the current channel's sample, e.g. `"%FLStudioFactoryData%/Data/Patches/Packs/Drums/Kicks/909 Kick.wav\0"`. Absent when the channel has no sample loaded (non-sampler kinds, or samplers before a file is dragged in). Scoped to the channel opened by the most-recent `0x40`. |
@@ -309,6 +310,14 @@ Future additions to this spec should follow the same pattern:
   insert (slots 0..9), even for empty slots. Mixer walker now
   accumulates a `pendingSlot` and pushes it to the insert's
   slots[] on each `0x62`, using the `0x62` value as the slot index.
+- **2026-04-19** (even later still) — Added `0xD9`
+  (the arrangement-playlist event) clip decoder. Dense array of 60-byte
+  records on FL 21+ (with a 32-byte fallback for older saves);
+  field layout derived from the reference parser's `the playlist-event layout`
+  (format fact only). All 5 current fixtures have 0 clips and
+  don't emit `0xD9` at all — the walker handles this natively
+  (absence = empty playlist). Decoder is unit-tested via crafted
+  payload; awaits a clip-bearing fixture for end-to-end oracle.
 - **2026-04-19** (later still) — Added `0xE0` pattern notes
   decoder. First musical-content primitive the parser decodes.
   24-byte fixed-record stream; each record is a full Note

@@ -5,7 +5,7 @@ import { type Channel, classifyChannelKind, unpackRGBA } from "../model/channel.
 // unpackRGBA is re-used for pattern color (0x96) — same byte packing as 0x80.
 import type { MixerInsert, MixerSlot } from "../model/mixer-insert.ts";
 import { type Pattern, decodeNotes } from "../model/pattern.ts";
-import type { Arrangement } from "../model/arrangement.ts";
+import { type Arrangement, decodeClips } from "../model/arrangement.ts";
 
 /**
  * Opcode constants for the entity-boundary events. Each is a format fact
@@ -82,6 +82,13 @@ const OP_ARRANGEMENT_NAME = 0xf1;
  * most are empty; counting these gives the project's track count.
  */
 const OP_TRACK_DATA = 0xee;
+/**
+ * the arrangement-playlist event (DATA+25) — array of 32-byte (pre-FL-21) or
+ * 60-byte (FL 21+) clip records. FL simply omits the event when the
+ * arrangement has no clips, so the absence of 0xD9 is a valid
+ * "empty playlist" encoding rather than a parse failure.
+ */
+const OP_PLAYLIST = 0xd9;
 
 /**
  * Walks the event stream and accumulates channels.
@@ -316,7 +323,7 @@ export function buildArrangements(events: readonly FLPEvent[]): Arrangement[] {
 
   for (const ev of events) {
     if (ev.opcode === OP_ARRANGEMENT_NEW && ev.kind === "u16") {
-      current = { id: ev.value, trackCount: 0 };
+      current = { id: ev.value, trackCount: 0, clips: [] };
       arrangements.push(current);
       continue;
     }
@@ -327,6 +334,12 @@ export function buildArrangements(events: readonly FLPEvent[]): Arrangement[] {
     }
     if (ev.opcode === OP_TRACK_DATA) {
       current.trackCount++;
+      continue;
+    }
+    if (ev.opcode === OP_PLAYLIST && ev.kind === "blob") {
+      // Multiple 0xD9 blobs (if they ever occur) are concatenated in
+      // stream order, preserving clip-declaration ordering.
+      for (const clip of decodeClips(ev.payload)) current.clips.push(clip);
       continue;
     }
   }

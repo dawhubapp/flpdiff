@@ -19,8 +19,8 @@ export {
 } from "./model/mixer-insert.ts";
 export type { Pattern, Note } from "./model/pattern.ts";
 export { formatPatternSummary, decodeNotes } from "./model/pattern.ts";
-export type { Arrangement } from "./model/arrangement.ts";
-export { formatArrangementSummary } from "./model/arrangement.ts";
+export type { Arrangement, Clip } from "./model/arrangement.ts";
+export { formatArrangementSummary, decodeClips } from "./model/arrangement.ts";
 export type {
   ProjectSummary,
   ChannelSummary,

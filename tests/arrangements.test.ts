@@ -1,6 +1,6 @@
 import { test, expect, describe } from "bun:test";
 import { resolve } from "node:path";
-import { parseFLPFile, formatArrangementSummary, type Arrangement } from "../src/index.ts";
+import { parseFLPFile, formatArrangementSummary, decodeClips, type Arrangement } from "../src/index.ts";
 
 const CORPUS_DIR = resolve(import.meta.dir, "../../tests/corpus/re_base/fl25");
 
@@ -35,19 +35,81 @@ describe("Arrangement extraction — oracle parity", () => {
 
 describe("formatArrangementSummary", () => {
   test("1 arrangement with 500 tracks", () => {
-    const arr: Arrangement[] = [{ id: 0, name: "Main", trackCount: 500 }];
+    const arr: Arrangement[] = [{ id: 0, name: "Main", trackCount: 500, clips: [] }];
     expect(formatArrangementSummary(arr)).toBe("1 arrangement (500 tracks)");
   });
 
   test("2 arrangements each with 500 tracks", () => {
     const arr: Arrangement[] = [
-      { id: 0, trackCount: 500 },
-      { id: 1, trackCount: 500 },
+      { id: 0, trackCount: 500, clips: [] },
+      { id: 1, trackCount: 500, clips: [] },
     ];
     expect(formatArrangementSummary(arr)).toBe("2 arrangements (500 + 500 tracks)");
   });
 
   test("empty list", () => {
     expect(formatArrangementSummary([])).toBe("0 arrangements");
+  });
+});
+
+describe("Clip decoding — no fixture yet has 0xD9, so all five report empty clips[]", () => {
+  test.each(ALL_FIXTURES)("%s: arrangement[0].clips is an empty array", async (name) => {
+    const [arrangement] = await insertsOfViaArr(name);
+    expect(arrangement).toBeDefined();
+    expect(arrangement!.clips).toEqual([]);
+  });
+
+  async function insertsOfViaArr(name: string): Promise<Arrangement[]> {
+    const buf = await Bun.file(resolve(CORPUS_DIR, name)).arrayBuffer();
+    return parseFLPFile(buf).arrangements;
+  }
+});
+
+describe("decodeClips — binary-format unit tests (crafted payloads)", () => {
+  test("empty payload yields empty array", () => {
+    expect(decodeClips(new Uint8Array(0))).toEqual([]);
+  });
+
+  test("payload size not a multiple of 60 or 32 → empty array", () => {
+    expect(decodeClips(new Uint8Array(37))).toEqual([]);
+    expect(decodeClips(new Uint8Array(59))).toEqual([]);
+  });
+
+  test("60-byte record (FL 21+) decodes all core fields", () => {
+    const buf = new Uint8Array(60);
+    const view = new DataView(buf.buffer);
+    view.setUint32(0, 96, true); // position = 96 ticks
+    view.setUint16(4, 20480, true); // pattern_base (ignored)
+    view.setUint16(6, 3, true); // item_index
+    view.setUint32(8, 192, true); // length = 192 ticks
+    view.setUint16(12, 499, true); // track_rvidx (= track 0 in display order)
+    view.setUint16(14, 7, true); // group
+    view.setUint16(18, 64, true); // item_flags
+    view.setFloat32(24, 0.25, true); // start_offset
+    view.setFloat32(28, 1.75, true); // end_offset
+
+    const clips = decodeClips(buf);
+    expect(clips.length).toBe(1);
+    expect(clips[0]).toEqual({
+      position: 96,
+      item_index: 3,
+      length: 192,
+      track_rvidx: 499,
+      group: 7,
+      item_flags: 64,
+      start_offset: 0.25,
+      end_offset: 1.75,
+    });
+  });
+
+  test("two 60-byte records decode in order", () => {
+    const buf = new Uint8Array(120);
+    const view = new DataView(buf.buffer);
+    view.setUint32(0, 0, true);
+    view.setUint32(60, 480, true);
+    const clips = decodeClips(buf);
+    expect(clips.length).toBe(2);
+    expect(clips[0]!.position).toBe(0);
+    expect(clips[1]!.position).toBe(480);
   });
 });

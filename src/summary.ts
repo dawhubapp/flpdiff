@@ -2,6 +2,7 @@ import type { FLPProject } from "./parser/flp-project.ts";
 import { getTempo } from "./parser/flp-project.ts";
 import type { RGBA } from "./model/channel.ts";
 import type { Note } from "./model/pattern.ts";
+import type { Clip } from "./model/arrangement.ts";
 
 /**
  * Flat structural snapshot of what the parser currently decodes. Omits
@@ -56,6 +57,7 @@ export type ArrangementSummary = {
   id: number;
   name?: string;
   trackCount: number;
+  clips: Clip[];
 };
 
 /**
@@ -109,7 +111,11 @@ function pickPattern(p: FLPProject["patterns"][number]): PatternSummary {
 }
 
 function pickArrangement(a: FLPProject["arrangements"][number]): ArrangementSummary {
-  const out: ArrangementSummary = { id: a.id, trackCount: a.trackCount };
+  const out: ArrangementSummary = {
+    id: a.id,
+    trackCount: a.trackCount,
+    clips: a.clips.map((c) => ({ ...c })),
+  };
   if (a.name !== undefined) out.name = a.name;
   return out;
 }
