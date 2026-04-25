@@ -4,7 +4,7 @@ import { decodeVSTWrapper } from "./vst-wrapper.ts";
 import { type Channel, classifyChannelKind, unpackRGBA, decodeLevels } from "../model/channel.ts";
 // unpackRGBA is re-used for pattern color (0x96) — same byte packing as 0x80.
 import { type MixerInsert, type MixerSlot, decodeInsertFlags } from "../model/mixer-insert.ts";
-import { type Pattern, decodeNotes } from "../model/pattern.ts";
+import { type Pattern, decodeNotes, decodeControllers } from "../model/pattern.ts";
 import { type Arrangement, type TimeMarker, decodeClips, decodeTimeMarkerPosition } from "../model/arrangement.ts";
 
 /**
@@ -84,6 +84,16 @@ const OP_PATTERN_NAME = 0xc1;
  * note records; see `decodeNotes`.
  */
 const OP_PATTERN_NOTES = 0xe0;
+/**
+ * the pattern-controllers event per the reference parser's documented DATA+15 = 0xCF. Shared
+ * with the project-artists event (TEXT+15) — they collide at the byte level,
+ * but Artists payloads are tiny UTF-16 strings (2 bytes for empty)
+ * while Controllers are 12-byte-per-record binary. The walker uses a
+ * payload-size-multiple-of-12 heuristic to distinguish. No current
+ * fixture emits a controllers-shaped 0xCF; decoder activates
+ * automatically when one does.
+ */
+const OP_PATTERN_CONTROLLERS = 0xcf;
 /** Pattern color (uint32 LE, RGBA byte-packed per unpackRGBA). */
 const OP_PATTERN_COLOR = 0x96;
 /** Pattern length (uint32 LE, length in PPQ ticks). Zero = default. */
@@ -328,7 +338,7 @@ export function buildPatterns(events: readonly FLPEvent[]): Pattern[] {
   for (const ev of events) {
     if (ev.opcode === OP_PATTERN_NEW && ev.kind === "u16") {
       currentId = ev.value;
-      if (!byId.has(currentId)) byId.set(currentId, { id: currentId, notes: [] });
+      if (!byId.has(currentId)) byId.set(currentId, { id: currentId, notes: [], controllers: [] });
       continue;
     }
     if (ev.opcode === OP_PATTERN_NAME && ev.kind === "blob" && currentId !== undefined) {
@@ -342,6 +352,23 @@ export function buildPatterns(events: readonly FLPEvent[]): Pattern[] {
         // Multiple 0xE0 blobs within a pattern are concatenated in
         // stream order — preserves timeline ordering.
         for (const note of decodeNotes(ev.payload)) p.notes.push(note);
+      }
+      continue;
+    }
+    if (
+      ev.opcode === OP_PATTERN_CONTROLLERS &&
+      ev.kind === "blob" &&
+      currentId !== undefined &&
+      ev.payload.byteLength > 0 &&
+      ev.payload.byteLength % 12 === 0
+    ) {
+      // Size-gate here: same opcode as the project-artists event which emits
+      // UTF-16LE payloads (2 bytes for empty, N*2 for N-char strings).
+      // Only controllers-shaped payloads (12-byte records) pass the
+      // modulo check cleanly.
+      const p = byId.get(currentId);
+      if (p) {
+        for (const c of decodeControllers(ev.payload)) p.controllers.push(c);
       }
       continue;
     }

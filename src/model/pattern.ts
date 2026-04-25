@@ -41,6 +41,40 @@ export type Note = {
  * pattern, leaving gaps (e.g., `[0, 2, 3]`). We preserve the raw id
  * rather than remapping.
  */
+/**
+ * A keyframe-automation controller event within a pattern. Targets a
+ * specific channel and produces a time-varying parameter value.
+ *
+ * Format follows the reference parser's `the controller-event layout` (12-byte records).
+ * FL 25 opcode for `the pattern-controllers event` is reference-parser-documented as
+ * `0xCF` (DATA+15), but on FL 25 `0xCF` is also `the project-artists event` —
+ * no committed fixture currently emits a multi-record `0xCF` payload
+ * so the walker uses a payload-size heuristic to distinguish (empty
+ * Artists strings are 2 bytes; controller records are multiples of 12).
+ */
+export type Controller = {
+  position: number;
+  channel: number;
+  flags: number;
+  value: number;
+};
+
+export function decodeControllers(payload: Uint8Array): Controller[] {
+  const out: Controller[] = [];
+  if (payload.byteLength === 0 || payload.byteLength % 12 !== 0) return out;
+  const view = new DataView(payload.buffer, payload.byteOffset, payload.byteLength);
+  for (let p = 0; p + 12 <= payload.byteLength; p += 12) {
+    out.push({
+      position: view.getUint32(p, true),
+      // bytes 4-5 reserved
+      channel: view.getUint8(p + 6),
+      flags: view.getUint8(p + 7),
+      value: view.getFloat32(p + 8, true),
+    });
+  }
+  return out;
+}
+
 export type Pattern = {
   /** FL-assigned pattern id from opcode `0x41` (pattern identity marker) value. */
   id: number;
@@ -68,6 +102,13 @@ export type Pattern = {
   looped?: boolean;
   /** Notes placed on the pattern, in stream order. Empty for patterns with no notes yet. */
   notes: Note[];
+  /**
+   * Keyframe-automation controller events on this pattern. Empty on
+   * every current FL 25 fixture — no committed fixture emits pattern
+   * controllers. Awaiting a clip-bearing fixture to activate the
+   * end-to-end walker path.
+   */
+  controllers: Controller[];
 };
 
 /**

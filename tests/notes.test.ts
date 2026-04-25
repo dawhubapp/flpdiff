@@ -1,6 +1,6 @@
 import { test, expect, describe } from "bun:test";
 import { resolve } from "node:path";
-import { parseFLPFile, decodeNotes, type Note } from "../src/index.ts";
+import { parseFLPFile, decodeNotes, decodeControllers, type Note } from "../src/index.ts";
 
 const CORPUS_DIR = resolve(import.meta.dir, "../../tests/corpus/re_base/fl25");
 
@@ -84,6 +84,55 @@ describe("decodeNotes — binary-format unit tests", () => {
     expect(notes[1]!.channel_iid).toBe(1);
     expect(notes[1]!.length).toBe(48);
     expect(notes[1]!.key).toBe(67);
+  });
+});
+
+describe("Pattern controllers (opcode 0xCF, decoder ready, no fixture exercises it)", () => {
+  test("decodeControllers: empty payload → []", () => {
+    expect(decodeControllers(new Uint8Array(0))).toEqual([]);
+  });
+
+  test("decodeControllers: malformed (not 12-byte multiple) → []", () => {
+    expect(decodeControllers(new Uint8Array(10))).toEqual([]);
+    expect(decodeControllers(new Uint8Array(25))).toEqual([]);
+  });
+
+  test("decodeControllers: crafted 2-record payload", () => {
+    const buf = new Uint8Array(24);
+    const view = new DataView(buf.buffer);
+    view.setUint32(0, 96, true); // position
+    view.setUint8(6, 3); // channel
+    view.setUint8(7, 0x80); // flags
+    view.setFloat32(8, 0.5, true); // value
+
+    view.setUint32(12, 192, true);
+    view.setUint8(18, 5);
+    view.setUint8(19, 0);
+    view.setFloat32(20, 1.0, true);
+
+    expect(decodeControllers(buf)).toEqual([
+      { position: 96, channel: 3, flags: 0x80, value: 0.5 },
+      { position: 192, channel: 5, flags: 0, value: 1.0 },
+    ]);
+  });
+
+  test("all 5 fixtures: empty controllers[] (0xCF is Artists, not controllers, on all of them)", async () => {
+    for (const name of [
+      "base_empty.flp",
+      "base_one_channel.flp",
+      "base_one_insert.flp",
+      "base_one_pattern.flp",
+      "base_one_serum.flp",
+    ]) {
+      const patterns = (
+        await import("../src/index.ts")
+      ).parseFLPFile(
+        await Bun.file(resolve(CORPUS_DIR, name)).arrayBuffer(),
+      ).patterns;
+      for (const p of patterns) {
+        expect(p.controllers).toEqual([]);
+      }
+    }
   });
 });
 

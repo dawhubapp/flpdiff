@@ -25,8 +25,8 @@ export {
   decodeInsertFlags,
   decodeMixerParams,
 } from "./model/mixer-insert.ts";
-export type { Pattern, Note } from "./model/pattern.ts";
-export { formatPatternSummary, decodeNotes } from "./model/pattern.ts";
+export type { Pattern, Note, Controller } from "./model/pattern.ts";
+export { formatPatternSummary, decodeNotes, decodeControllers } from "./model/pattern.ts";
 export type { Arrangement, Clip, TimeMarker, TimeMarkerKind } from "./model/arrangement.ts";
 export { formatArrangementSummary, decodeClips, decodeTimeMarkerPosition } from "./model/arrangement.ts";
 export type {

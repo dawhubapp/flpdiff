@@ -2,7 +2,7 @@ import type { FLPProject } from "./parser/flp-project.ts";
 import { getTempo } from "./parser/flp-project.ts";
 import type { RGBA, Levels } from "./model/channel.ts";
 import type { InsertFlags } from "./model/mixer-insert.ts";
-import type { Note } from "./model/pattern.ts";
+import type { Note, Controller } from "./model/pattern.ts";
 import type { Clip, TimeMarker } from "./model/arrangement.ts";
 
 /**
@@ -58,6 +58,7 @@ export type PatternSummary = {
   color?: RGBA;
   looped?: boolean;
   notes: Note[];
+  controllers: Controller[];
 };
 
 export type ArrangementSummary = {
@@ -116,7 +117,11 @@ function pickInsert(ins: FLPProject["inserts"][number]): InsertSummary {
 }
 
 function pickPattern(p: FLPProject["patterns"][number]): PatternSummary {
-  const out: PatternSummary = { id: p.id, notes: p.notes.map((n) => ({ ...n })) };
+  const out: PatternSummary = {
+    id: p.id,
+    notes: p.notes.map((n) => ({ ...n })),
+    controllers: p.controllers.map((c) => ({ ...c })),
+  };
   if (p.name !== undefined) out.name = p.name;
   if (p.length !== undefined) out.length = p.length;
   if (p.color !== undefined) out.color = { ...p.color };

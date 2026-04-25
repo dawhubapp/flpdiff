@@ -157,6 +157,7 @@ const ORACLE: Record<string, ProjectSummary> = {
             mod_y: 128,
           },
         ],
+        controllers: [],
       },
     ],
     arrangements: DEFAULT_ARRANGEMENT,
