@@ -3,7 +3,7 @@ import { getTempo } from "./parser/flp-project.ts";
 import type { RGBA, Levels } from "./model/channel.ts";
 import type { InsertFlags } from "./model/mixer-insert.ts";
 import type { Note } from "./model/pattern.ts";
-import type { Clip } from "./model/arrangement.ts";
+import type { Clip, TimeMarker } from "./model/arrangement.ts";
 
 /**
  * Flat structural snapshot of what the parser currently decodes. Omits
@@ -65,6 +65,7 @@ export type ArrangementSummary = {
   name?: string;
   trackCount: number;
   clips: Clip[];
+  timemarkers: TimeMarker[];
 };
 
 /**
@@ -128,6 +129,7 @@ function pickArrangement(a: FLPProject["arrangements"][number]): ArrangementSumm
     id: a.id,
     trackCount: a.trackCount,
     clips: a.clips.map((c) => ({ ...c })),
+    timemarkers: a.timemarkers.map((m) => ({ ...m })),
   };
   if (a.name !== undefined) out.name = a.name;
   return out;

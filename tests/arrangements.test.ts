@@ -1,6 +1,12 @@
 import { test, expect, describe } from "bun:test";
 import { resolve } from "node:path";
-import { parseFLPFile, formatArrangementSummary, decodeClips, type Arrangement } from "../src/index.ts";
+import {
+  parseFLPFile,
+  formatArrangementSummary,
+  decodeClips,
+  decodeTimeMarkerPosition,
+  type Arrangement,
+} from "../src/index.ts";
 
 const CORPUS_DIR = resolve(import.meta.dir, "../../tests/corpus/re_base/fl25");
 
@@ -35,14 +41,14 @@ describe("Arrangement extraction — oracle parity", () => {
 
 describe("formatArrangementSummary", () => {
   test("1 arrangement with 500 tracks", () => {
-    const arr: Arrangement[] = [{ id: 0, name: "Main", trackCount: 500, clips: [] }];
+    const arr: Arrangement[] = [{ id: 0, name: "Main", trackCount: 500, clips: [], timemarkers: [] }];
     expect(formatArrangementSummary(arr)).toBe("1 arrangement (500 tracks)");
   });
 
   test("2 arrangements each with 500 tracks", () => {
     const arr: Arrangement[] = [
-      { id: 0, trackCount: 500, clips: [] },
-      { id: 1, trackCount: 500, clips: [] },
+      { id: 0, trackCount: 500, clips: [], timemarkers: [] },
+      { id: 1, trackCount: 500, clips: [], timemarkers: [] },
     ];
     expect(formatArrangementSummary(arr)).toBe("2 arrangements (500 + 500 tracks)");
   });
@@ -63,6 +69,29 @@ describe("Clip decoding — no fixture yet has 0xD9, so all five report empty cl
     const buf = await Bun.file(resolve(CORPUS_DIR, name)).arrayBuffer();
     return parseFLPFile(buf).arrangements;
   }
+});
+
+describe("TimeMarkers — no fixture emits any, so all arrangements report []", () => {
+  test.each(ALL_FIXTURES)("%s: arrangement[0].timemarkers is []", async (name) => {
+    const buf = await Bun.file(resolve(CORPUS_DIR, name)).arrayBuffer();
+    const arrangement = parseFLPFile(buf).arrangements[0]!;
+    expect(arrangement.timemarkers).toEqual([]);
+  });
+});
+
+describe("decodeTimeMarkerPosition — SIGNATURE_BIT split", () => {
+  test("plain marker (no high bit)", () => {
+    expect(decodeTimeMarkerPosition(96)).toEqual({ kind: "marker", position: 96 });
+  });
+  test("signature marker (0x08000000 set)", () => {
+    expect(decodeTimeMarkerPosition(0x08000000 | 192)).toEqual({
+      kind: "signature",
+      position: 192,
+    });
+  });
+  test("zero raw = plain marker at position 0", () => {
+    expect(decodeTimeMarkerPosition(0)).toEqual({ kind: "marker", position: 0 });
+  });
 });
 
 describe("decodeClips — binary-format unit tests (crafted payloads)", () => {

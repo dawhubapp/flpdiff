@@ -70,7 +70,7 @@ const DEFAULT_INSERTS: InsertSummary[] = Array.from({ length: 18 }, (_, i) => ({
 // Every FL 25 base project has exactly one arrangement, id=0, named
 // "Arrangement", with the default 500 track slots.
 const DEFAULT_ARRANGEMENT: ArrangementSummary[] = [
-  { id: 0, name: "Arrangement", trackCount: 500, clips: [] },
+  { id: 0, name: "Arrangement", trackCount: 500, clips: [], timemarkers: [] },
 ];
 
 /**

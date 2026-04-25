@@ -63,6 +63,40 @@ export function decodeClips(payload: Uint8Array): Clip[] {
   return out;
 }
 
+/**
+ * A marker on the arrangement's timeline. Two kinds: plain text
+ * markers and time-signature changes. FL encodes the kind in the
+ * high bits of the `0x94` time-marker position uint32 value —
+ * the `SIGNATURE_BIT` (0x08000000) flips a regular marker into a
+ * time-signature marker carrying numerator + denominator.
+ */
+export type TimeMarkerKind = "marker" | "signature";
+
+export type TimeMarker = {
+  kind: TimeMarkerKind;
+  /** Position in PPQ ticks on the arrangement timeline. */
+  position: number;
+  /** User-set marker name, if any (from opcode 0xCD, UTF-16LE). */
+  name?: string;
+  /** Time-signature numerator; only meaningful for `kind === "signature"`. */
+  numerator?: number;
+  /** Time-signature denominator; only meaningful for `kind === "signature"`. */
+  denominator?: number;
+};
+
+const TIME_SIGNATURE_BIT = 0x08000000;
+
+/**
+ * Decode a `0x94` time-marker position uint32 into its kind + plain-ticks
+ * position. The high bit `0x08000000` flags time-signature markers.
+ */
+export function decodeTimeMarkerPosition(raw: number): { kind: TimeMarkerKind; position: number } {
+  if ((raw & TIME_SIGNATURE_BIT) !== 0) {
+    return { kind: "signature", position: raw & ~TIME_SIGNATURE_BIT };
+  }
+  return { kind: "marker", position: raw };
+}
+
 export type Arrangement = {
   /** FL-assigned arrangement id from opcode `0x63`. */
   id: number;
@@ -81,6 +115,12 @@ export type Arrangement = {
    * clips — so an empty arrangement has `clips === []`, not undefined.
    */
   clips: Clip[];
+  /**
+   * Timeline markers — plain text markers and time-signature changes.
+   * Empty when the user hasn't added any; FL doesn't emit default
+   * markers on a fresh project.
+   */
+  timemarkers: TimeMarker[];
 };
 
 /**

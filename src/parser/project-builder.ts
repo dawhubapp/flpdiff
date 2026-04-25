@@ -5,7 +5,7 @@ import { type Channel, classifyChannelKind, unpackRGBA, decodeLevels } from "../
 // unpackRGBA is re-used for pattern color (0x96) — same byte packing as 0x80.
 import { type MixerInsert, type MixerSlot, decodeInsertFlags } from "../model/mixer-insert.ts";
 import { type Pattern, decodeNotes } from "../model/pattern.ts";
-import { type Arrangement, decodeClips } from "../model/arrangement.ts";
+import { type Arrangement, type TimeMarker, decodeClips, decodeTimeMarkerPosition } from "../model/arrangement.ts";
 
 /**
  * Opcode constants for the entity-boundary events. Each is a format fact
@@ -110,6 +110,14 @@ const OP_TRACK_DATA = 0xee;
  * "empty playlist" encoding rather than a parse failure.
  */
 const OP_PLAYLIST = 0xd9;
+/** Time-marker position (uint32 with high bit 0x08000000 flagging signature markers). */
+const OP_TIMEMARKER_POSITION = 0x94;
+/** Time-marker numerator (u8). Only meaningful for signature markers. */
+const OP_TIMEMARKER_NUMERATOR = 0x21;
+/** Time-marker denominator (u8). Only meaningful for signature markers. */
+const OP_TIMEMARKER_DENOMINATOR = 0x22;
+/** Time-marker name (UTF-16LE null-terminated). */
+const OP_TIMEMARKER_NAME = 0xcd;
 
 /**
  * Walks the event stream and accumulates channels.
@@ -375,10 +383,25 @@ export function buildPatterns(events: readonly FLPEvent[]): Pattern[] {
 export function buildArrangements(events: readonly FLPEvent[]): Arrangement[] {
   const arrangements: Arrangement[] = [];
   let current: Arrangement | undefined;
+  /**
+   * Time-marker currently being accumulated. Opens on each 0x94
+   * time-marker position event; subsequent 0x21/0x22/0xCD events within
+   * the same arrangement attach to this marker. Pushed to
+   * `current.timemarkers` on the NEXT 0x94 or at arrangement close.
+   */
+  let pendingMarker: TimeMarker | undefined;
+
+  const flushMarker = () => {
+    if (pendingMarker !== undefined && current !== undefined) {
+      current.timemarkers.push(pendingMarker);
+    }
+    pendingMarker = undefined;
+  };
 
   for (const ev of events) {
     if (ev.opcode === OP_ARRANGEMENT_NEW && ev.kind === "u16") {
-      current = { id: ev.value, trackCount: 0, clips: [] };
+      flushMarker();
+      current = { id: ev.value, trackCount: 0, clips: [], timemarkers: [] };
       arrangements.push(current);
       continue;
     }
@@ -392,12 +415,29 @@ export function buildArrangements(events: readonly FLPEvent[]): Arrangement[] {
       continue;
     }
     if (ev.opcode === OP_PLAYLIST && ev.kind === "blob") {
-      // Multiple 0xD9 blobs (if they ever occur) are concatenated in
-      // stream order, preserving clip-declaration ordering.
       for (const clip of decodeClips(ev.payload)) current.clips.push(clip);
       continue;
     }
+    if (ev.opcode === OP_TIMEMARKER_POSITION && ev.kind === "u32") {
+      flushMarker();
+      const { kind, position } = decodeTimeMarkerPosition(ev.value);
+      pendingMarker = { kind, position };
+      continue;
+    }
+    if (ev.opcode === OP_TIMEMARKER_NAME && ev.kind === "blob" && pendingMarker) {
+      pendingMarker.name = decodeUtf16LeBytes(ev.payload);
+      continue;
+    }
+    if (ev.opcode === OP_TIMEMARKER_NUMERATOR && ev.kind === "u8" && pendingMarker) {
+      pendingMarker.numerator = ev.value;
+      continue;
+    }
+    if (ev.opcode === OP_TIMEMARKER_DENOMINATOR && ev.kind === "u8" && pendingMarker) {
+      pendingMarker.denominator = ev.value;
+      continue;
+    }
   }
+  flushMarker();
 
   return arrangements;
 }
