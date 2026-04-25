@@ -117,6 +117,7 @@ output on all five FL 25 public fixtures.
 | `0x40` | WORD (u16 LE) | New channel | Channel iid (uint16) | Announces a new channel. Subsequent channel-scoped events up to the next `0x40` belong to this iid. iids are contiguous `0..n-1` across the project. |
 | `0x41` | WORD (u16 LE) | Pattern identity marker | Pattern id (uint16) | Announces the current pattern id. **Fires twice per pattern** (once for note/controller grouping, once for other props) — walkers must dedup by id rather than treating each occurrence as a new pattern. |
 | `0x93` | DWORD (u32 LE) | Mixer insert boundary (close) | Ignored | Closes the currently-being-built mixer insert. Unlike `0x40` which *opens* a channel, `0x93` *ends* an insert — events prior to each `0x93` belong to that insert. The count of `0x93` events equals the project's active-insert count (18 on a freshly-saved FL 25 base). |
+| `0x80` | DWORD (u32 LE) | Plugin/channel color | RGBA packed LE | Low byte is R, then G, B, A — reading as uint32 LE and extracting bytes via `value & 0xFF`, `(value >> 8) & 0xFF`, etc. FL's default channel color is `0x00484541` → `{r: 65, g: 69, b: 72, a: 0}`. Shared between channels and mixer-slot plugins; scope gating (channel vs slot) keeps attribution clean. |
 | `0x9C` | DWORD (u32 LE) | Tempo | `bpm × 1000` | `120000` → 120.0 BPM. Verified via `cycle.py` sweeps at 100/120/130/145/160 BPM (dev repo's `docs/fl25-event-format.md`). |
 | `0x9F` | DWORD (u32 LE) | FL build number | uint32 | Value `4960` corresponds to FL Studio 25.2.4 build 4960. |
 | `0x62` | WORD (u16 LE) | Mixer effect slot boundary (close) | Slot index (uint16) | **Closes** the current slot's accumulation — events for slot K (plugin name, wrapper, state) fire BEFORE the `0x62` that carries value K. Always emitted in groups of 10 per insert (slots 0..9), even for empty slots. For the channel walker, any `0x62` marks the end of channel-scoped events and the start of mixer section. |
@@ -304,6 +305,12 @@ Future additions to this spec should follow the same pattern:
   insert (slots 0..9), even for empty slots. Mixer walker now
   accumulates a `pendingSlot` and pushes it to the insert's
   slots[] on each `0x62`, using the `0x62` value as the slot index.
+- **2026-04-19** (later) — Added `0x80` (the plugin-color event,
+  uint32 LE). RGBA bytes in LE order `[R, G, B, A]`. FL defaults
+  freshly-created sampler channels to `0x00484541` (gray).
+  `base_one_channel`'s second channel gets `0x006a655c` (a lighter
+  shade). Channel walker attributes 0x80 only in channel scope so
+  the same opcode in mixer-slot scope doesn't bleed across.
 - **2026-04-19** (late) — Added `0xD5` VST-wrapper decoding. When
   the hosting entity's `internalName === "Fruity Wrapper"`, the
   0xD5 payload is parsed as a record stream to extract the VST

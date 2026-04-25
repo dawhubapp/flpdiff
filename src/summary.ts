@@ -1,5 +1,6 @@
 import type { FLPProject } from "./parser/flp-project.ts";
 import { getTempo } from "./parser/flp-project.ts";
+import type { RGBA } from "./model/channel.ts";
 
 /**
  * Flat structural snapshot of what the parser currently decodes. Omits
@@ -27,6 +28,7 @@ export type ChannelSummary = {
   name?: string;
   sample_path?: string;
   plugin?: { internalName: string; name?: string; vendor?: string };
+  color?: RGBA;
 };
 
 export type SlotSummary = {
@@ -75,6 +77,7 @@ function pickChannel(ch: FLPProject["channels"][number]): ChannelSummary {
     if (ch.plugin.name !== undefined) out.plugin.name = ch.plugin.name;
     if (ch.plugin.vendor !== undefined) out.plugin.vendor = ch.plugin.vendor;
   }
+  if (ch.color !== undefined) out.color = { ...ch.color };
   return out;
 }
 

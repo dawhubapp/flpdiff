@@ -40,10 +40,39 @@ export type ChannelPlugin = {
   vendor?: string;
 };
 
+/**
+ * 8-bit-per-channel RGBA color, stored as ints 0-255. FL serializes
+ * colors as a uint32 LE in opcode `0x80` with bytes in `[R, G, B, A]`
+ * order; this type preserves the raw integer bytes rather than
+ * pre-normalizing to float, so consumers can choose their own
+ * representation and the oracle stays byte-faithful.
+ */
+export type RGBA = {
+  r: number;
+  g: number;
+  b: number;
+  a: number;
+};
+
+export function unpackRGBA(value: number): RGBA {
+  return {
+    r: value & 0xff,
+    g: (value >> 8) & 0xff,
+    b: (value >> 16) & 0xff,
+    a: (value >> 24) & 0xff,
+  };
+}
+
 export type Channel = {
   /** Stable FL-assigned channel index from opcode 0x40. */
   iid: number;
   kind: ChannelKind;
+  /**
+   * Channel color from opcode `0x80`. FL assigns a default gray
+   * (`{r: 65, g: 69, b: 72, a: 0}`) to fresh sampler channels;
+   * users can override via the channel-rack color picker.
+   */
+  color?: RGBA;
   /**
    * User-visible channel name. Sourced from opcode `0xCB` (shared with
    * mixer-slot plugin names — the walker attributes it to the current

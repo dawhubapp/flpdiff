@@ -1,7 +1,7 @@
 import type { FLPEvent } from "./event.ts";
 import { decodeUtf16LeBytes } from "./primitives.ts";
 import { decodeVSTWrapper } from "./vst-wrapper.ts";
-import { type Channel, classifyChannelKind } from "../model/channel.ts";
+import { type Channel, classifyChannelKind, unpackRGBA } from "../model/channel.ts";
 import type { MixerInsert, MixerSlot } from "../model/mixer-insert.ts";
 import type { Pattern } from "../model/pattern.ts";
 import type { Arrangement } from "../model/arrangement.ts";
@@ -18,6 +18,14 @@ const OP_CHANNEL_SAMPLE_PATH = 0xc4;
 /** Plugin internal-class name (UTF-16LE). On a bare sampler channel
  *  FL emits this as an empty string. */
 const OP_PLUGIN_INTERNAL_NAME = 0xc9;
+/**
+ * Plugin color (uint32 LE). FL packs RGBA bytes in order [R, G, B, A]
+ * — reading as uint32 LE gives `value & 0xFF = R`,
+ * `(value >> 8) & 0xFF = G`, etc. Shared between channels and mixer
+ * slots; scope gating (before first 0x62) keeps channel attribution
+ * clean.
+ */
+const OP_PLUGIN_COLOR = 0x80;
 /**
  * Plugin state blob. For VST-wrapped plugins
  * (`internalName === "Fruity Wrapper"`) the payload is the FL
@@ -97,6 +105,10 @@ export function buildChannels(events: readonly FLPEvent[]): Channel[] {
 
     if (ev.opcode === OP_CHANNEL_TYPE && ev.kind === "u8") {
       current.kind = classifyChannelKind(ev.value);
+      continue;
+    }
+    if (ev.opcode === OP_PLUGIN_COLOR && ev.kind === "u32" && current.color === undefined) {
+      current.color = unpackRGBA(ev.value);
       continue;
     }
     if (ev.opcode === OP_CHANNEL_SAMPLE_PATH && ev.kind === "blob") {

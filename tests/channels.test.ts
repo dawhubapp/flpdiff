@@ -6,6 +6,7 @@ import {
   formatChannelSummary,
   formatSampleSummary,
   sampleFilename,
+  unpackRGBA,
   type Channel,
 } from "../src/index.ts";
 
@@ -167,6 +168,43 @@ describe("Channel-hosted plugin (opcode 0xC9)", () => {
       name: "Serum",
       vendor: "Xfer Records",
     });
+  });
+});
+
+describe("Channel color (opcode 0x80)", () => {
+  const DEFAULT = { r: 65, g: 69, b: 72, a: 0 };
+  const LIGHTER = { r: 92, g: 101, b: 106, a: 0 };
+
+  test("base_empty: channel[0] gets FL's default gray", async () => {
+    const channels = await channelsOf("base_empty.flp");
+    expect(channels[0]!.color).toEqual(DEFAULT);
+  });
+
+  test("base_one_channel: channel[0] default gray + channel[1] lighter", async () => {
+    const channels = await channelsOf("base_one_channel.flp");
+    expect(channels[0]!.color).toEqual(DEFAULT);
+    expect(channels[1]!.color).toEqual(LIGHTER);
+  });
+
+  test("base_one_insert: channel color unaffected by slot plugin having its own 0x80", async () => {
+    // Critical regression: 0x80 fires twice on this fixture (channel + EQ plugin).
+    // The walker must attribute only the channel-scope 0x80 to the channel.
+    const channels = await channelsOf("base_one_insert.flp");
+    expect(channels.length).toBe(1);
+    expect(channels[0]!.color).toEqual(DEFAULT);
+  });
+});
+
+describe("unpackRGBA — uint32 LE layout [R, G, B, A]", () => {
+  test("0x00484541 decodes to FL's default gray", () => {
+    expect(unpackRGBA(0x00484541)).toEqual({ r: 0x41, g: 0x45, b: 0x48, a: 0 });
+  });
+  test("0xFF006400 maps to {r: 0, g: 100, b: 0, a: 255}", () => {
+    expect(unpackRGBA(0xff006400)).toEqual({ r: 0, g: 0x64, b: 0, a: 0xff });
+  });
+  test("all-zeros and all-ones edge values", () => {
+    expect(unpackRGBA(0)).toEqual({ r: 0, g: 0, b: 0, a: 0 });
+    expect(unpackRGBA(0xffffffff)).toEqual({ r: 255, g: 255, b: 255, a: 255 });
   });
 });
 
