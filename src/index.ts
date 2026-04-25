@@ -10,3 +10,5 @@ export {
   formatSampleSummary,
   sampleFilename,
 } from "./model/channel.ts";
+export type { MixerInsert } from "./model/mixer-insert.ts";
+export { countNamedInserts, formatMixerSummary } from "./model/mixer-insert.ts";

@@ -1,6 +1,7 @@
 import type { FLPEvent } from "./event.ts";
 import { decodeUtf16LeBytes } from "./primitives.ts";
 import { type Channel, classifyChannelKind } from "../model/channel.ts";
+import type { MixerInsert } from "../model/mixer-insert.ts";
 
 /**
  * Opcode constants for the entity-boundary events. Each is a format fact
@@ -18,6 +19,12 @@ const OP_NAME = 0xcb;
  *  current-scope to "slot", ending channel attribution for subsequent
  *  0xCB events. */
 const OP_NEW_SLOT = 0x62;
+/** Mixer insert boundary (the insert-output event, uint32 LE). Each 0x93 closes
+ *  the current insert; the total count matches FL's "active inserts"
+ *  number (18 on a freshly-saved base project). */
+const OP_INSERT_END = 0x93;
+/** Per-insert name (UTF-16LE null-terminated). */
+const OP_INSERT_NAME = 0xcc;
 
 /**
  * Walks the event stream and accumulates channels.
@@ -68,4 +75,41 @@ export function buildChannels(events: readonly FLPEvent[]): Channel[] {
   }
 
   return channels;
+}
+
+/**
+ * Walks the event stream and accumulates mixer inserts.
+ *
+ * Insert-boundary rule: opcode 0x93 (uint32 LE) CLOSES the current
+ * insert — the inverse of the channel walker's opening rule at 0x40.
+ * A pending insert accumulates events (name, in this skeleton) until
+ * a 0x93 fires, at which point the pending is pushed and a fresh
+ * pending is opened for the next insert.
+ *
+ * Index 0 = master. The 18 0x93 events in an FL 25 base project
+ * therefore produce inserts indexed 0..17 — matching Python's
+ * `flp-info` "18 active inserts" line.
+ *
+ * Scope isolation: OP_INSERT_NAME (0xCC) is distinct from channel-scope
+ * opcodes, so no extra scope tracking is needed. If future decode work
+ * uncovers an insert opcode that shares bytes with a channel opcode,
+ * the same scope pattern used for 0xCB can be extended here.
+ */
+export function buildMixerInserts(events: readonly FLPEvent[]): MixerInsert[] {
+  const inserts: MixerInsert[] = [];
+  let pending: MixerInsert = { index: 0 };
+
+  for (const ev of events) {
+    if (ev.opcode === OP_INSERT_END) {
+      inserts.push(pending);
+      pending = { index: inserts.length };
+      continue;
+    }
+    if (ev.opcode === OP_INSERT_NAME && ev.kind === "blob" && pending.name === undefined) {
+      pending.name = decodeUtf16LeBytes(ev.payload);
+      continue;
+    }
+  }
+
+  return inserts;
 }
