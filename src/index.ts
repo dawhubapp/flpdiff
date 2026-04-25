@@ -2,7 +2,14 @@ export { parseFLPFile, getFLVersionBanner, getTempo } from "./parser/flp-project
 export type { FLPProject, FLPHeader } from "./parser/flp-project.ts";
 export type { FLPEvent } from "./parser/event.ts";
 export { FLPParseError } from "./parser/errors.ts";
-export type { Channel, ChannelKind, ChannelPlugin, RGBA, Levels } from "./model/channel.ts";
+export type {
+  Channel,
+  ChannelKind,
+  ChannelPlugin,
+  RGBA,
+  Levels,
+  FilterTypeName,
+} from "./model/channel.ts";
 export {
   classifyChannelKind,
   countChannelsByKind,
@@ -11,6 +18,7 @@ export {
   sampleFilename,
   unpackRGBA,
   decodeLevels,
+  filterTypeName,
 } from "./model/channel.ts";
 export type {
   MixerInsert,

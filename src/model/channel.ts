@@ -90,6 +90,45 @@ export type Levels = {
   filter_type: number;
 };
 
+/**
+ * Human-readable names for the `filter_type` enum values stored in
+ * `Levels.filter_type`. Matches FL's in-app terminology for each filter
+ * topology. Values outside the 0..7 range fall through to `"unknown"`.
+ */
+export type FilterTypeName =
+  | "FastLP"
+  | "LP"
+  | "BP"
+  | "HP"
+  | "BS"
+  | "LPx2"
+  | "SVFLP"
+  | "SVFLPx2"
+  | "unknown";
+
+export function filterTypeName(raw: number): FilterTypeName {
+  switch (raw) {
+    case 0:
+      return "FastLP";
+    case 1:
+      return "LP";
+    case 2:
+      return "BP";
+    case 3:
+      return "HP";
+    case 4:
+      return "BS";
+    case 5:
+      return "LPx2";
+    case 6:
+      return "SVFLP";
+    case 7:
+      return "SVFLPx2";
+    default:
+      return "unknown";
+  }
+}
+
 export function decodeLevels(payload: Uint8Array): Levels | undefined {
   if (payload.byteLength < 24) return undefined;
   const view = new DataView(payload.buffer, payload.byteOffset, payload.byteLength);

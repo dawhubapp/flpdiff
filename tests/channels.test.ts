@@ -8,6 +8,7 @@ import {
   sampleFilename,
   unpackRGBA,
   decodeLevels,
+  filterTypeName,
   type Channel,
 } from "../src/index.ts";
 
@@ -255,6 +256,19 @@ describe("Channel Levels (opcode 0xDB, 24-byte struct)", () => {
   test("decodeLevels: payload < 24 bytes yields undefined", () => {
     expect(decodeLevels(new Uint8Array(23))).toBeUndefined();
     expect(decodeLevels(new Uint8Array(0))).toBeUndefined();
+  });
+
+  test("filterTypeName: full 0..7 mapping + unknown fallback", () => {
+    expect(filterTypeName(0)).toBe("FastLP");
+    expect(filterTypeName(1)).toBe("LP");
+    expect(filterTypeName(2)).toBe("BP");
+    expect(filterTypeName(3)).toBe("HP");
+    expect(filterTypeName(4)).toBe("BS");
+    expect(filterTypeName(5)).toBe("LPx2");
+    expect(filterTypeName(6)).toBe("SVFLP");
+    expect(filterTypeName(7)).toBe("SVFLPx2");
+    expect(filterTypeName(8)).toBe("unknown");
+    expect(filterTypeName(-1)).toBe("unknown");
   });
 });
 
