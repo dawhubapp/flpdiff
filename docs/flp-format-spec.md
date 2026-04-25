@@ -117,8 +117,10 @@ output on all five FL 25 public fixtures.
 | `0x40` | WORD (u16 LE) | New channel | Channel iid (uint16) | Announces a new channel. Subsequent channel-scoped events up to the next `0x40` belong to this iid. iids are contiguous `0..n-1` across the project. |
 | `0x9C` | DWORD (u32 LE) | Tempo | `bpm × 1000` | `120000` → 120.0 BPM. Verified via `cycle.py` sweeps at 100/120/130/145/160 BPM (dev repo's `docs/fl25-event-format.md`). |
 | `0x9F` | DWORD (u32 LE) | FL build number | uint32 | Value `4960` corresponds to FL Studio 25.2.4 build 4960. |
+| `0x62` | WORD (u16 LE) | New mixer effect slot | Slot index (uint16) | Announces a new effect slot within a mixer insert. From the channel walker's perspective, this marks the end of channel-scoped events — subsequent shared-opcode events (e.g., `0xCB` below) belong to the slot's plugin, not to a channel. |
 | `0xC4` | DATA (varint + bytes) | Channel sample path | Null-terminated UTF-16LE | Full library path for the current channel's sample, e.g. `"%FLStudioFactoryData%/Data/Patches/Packs/Drums/Kicks/909 Kick.wav\0"`. Absent when the channel has no sample loaded (non-sampler kinds, or samplers before a file is dragged in). Scoped to the channel opened by the most-recent `0x40`. |
 | `0xC7` | DATA (varint + bytes) | FL version (ASCII) | Null-terminated ASCII | `"25.2.4.4960\0"`, 12 bytes on FL 25.2.4. Duplicated by the UTF-16 banner at `0x36` — the two strings serve different consumers. |
+| `0xCB` | DATA (varint + bytes) | Channel/slot name (shared) | Null-terminated UTF-16LE | **Scope-sensitive.** In channel scope (after `0x40`, before any `0x62`) it's the channel name, e.g. `"Sampler"` / `"Kick"` / `"SerumTest"`. In slot scope (after `0x62`) it's the hosted plugin's display name, e.g. `"Fruity Parametric EQ 2"`. Walkers must track the current scope to attribute correctly. |
 
 ### 3.2 Observed opcodes (parser handles, semantics unverified)
 
@@ -261,3 +263,10 @@ Future additions to this spec should follow the same pattern:
 - **2026-04-18** (later still) — Added `0xC4` (channel sample path,
   UTF-16LE null-terminated in a DATA blob) after oracle parity
   with Python's `flp-info` on the two sample-bearing fixtures.
+- **2026-04-18** (evening) — Added `0x62` (slot boundary, slot
+  index u16) and `0xCB` (shared channel/slot name, UTF-16LE in
+  a DATA blob). First **scope-sensitive** opcode: attribution of
+  `0xCB` depends on whether the walker is currently inside a
+  channel or a mixer slot. Critical on `base_one_insert.flp`,
+  where naïve "first 0xCB per channel" would steal the plugin
+  name.

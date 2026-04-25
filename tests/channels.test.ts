@@ -64,6 +64,38 @@ describe("Channel extraction — oracle parity with Python flp-info", () => {
   });
 });
 
+describe("Channel names (opcode 0xCB, scope-aware) — oracle parity", () => {
+  test("base_empty.flp: default sampler name", async () => {
+    const channels = await channelsOf("base_empty.flp");
+    expect(channels.map((c) => c.name)).toEqual(["Sampler"]);
+  });
+
+  test("base_one_channel.flp: Sampler + Kick", async () => {
+    const channels = await channelsOf("base_one_channel.flp");
+    expect(channels.map((c) => c.name)).toEqual(["Sampler", "Kick"]);
+  });
+
+  test("base_one_pattern.flp: Sampler + Kick", async () => {
+    const channels = await channelsOf("base_one_pattern.flp");
+    expect(channels.map((c) => c.name)).toEqual(["Sampler", "Kick"]);
+  });
+
+  test("base_one_serum.flp: Sampler + SerumTest", async () => {
+    const channels = await channelsOf("base_one_serum.flp");
+    expect(channels.map((c) => c.name)).toEqual(["Sampler", "SerumTest"]);
+  });
+
+  test("base_one_insert.flp: channel name is 'Sampler' — NOT the plugin name", async () => {
+    // Critical regression test: base_one_insert contains a mixer slot
+    // with "Fruity Parametric EQ 2" as its plugin name, carried on the
+    // SAME opcode (0xCB) as channel names. Without scope tracking, the
+    // walker would steal the plugin name and attribute it to the
+    // channel.
+    const channels = await channelsOf("base_one_insert.flp");
+    expect(channels.map((c) => c.name)).toEqual(["Sampler"]);
+  });
+});
+
 describe("Sample paths (opcode 0xC4) — oracle parity", () => {
   const FACTORY_SAMPLE = "%FLStudioFactoryData%/Data/Patches/Packs/Drums/Kicks/909 Kick.wav";
 

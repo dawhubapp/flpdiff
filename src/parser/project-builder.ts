@@ -11,6 +11,13 @@ import { type Channel, classifyChannelKind } from "../model/channel.ts";
 const OP_NEW_CHANNEL = 0x40;
 const OP_CHANNEL_TYPE = 0x15;
 const OP_CHANNEL_SAMPLE_PATH = 0xc4;
+/** Shared name opcode. In a channel scope it's the channel name; in a
+ *  mixer-slot scope it's the plugin name. Scope tracked via OP_NEW_SLOT. */
+const OP_NAME = 0xcb;
+/** Mixer-effect-slot boundary. Each new slot flips the walker's
+ *  current-scope to "slot", ending channel attribution for subsequent
+ *  0xCB events. */
+const OP_NEW_SLOT = 0x62;
 
 /**
  * Walks the event stream and accumulates channels.
@@ -26,19 +33,36 @@ const OP_CHANNEL_SAMPLE_PATH = 0xc4;
 export function buildChannels(events: readonly FLPEvent[]): Channel[] {
   const channels: Channel[] = [];
   let current: Channel | undefined;
+  /**
+   * Walker scope. Starts as "outside" (neither channel nor slot). Flips
+   * to "channel" on every 0x40 and to "slot" on every 0x62. Only
+   * channel-scoped events are attributed to `current`.
+   */
+  let scope: "outside" | "channel" | "slot" = "outside";
 
   for (const ev of events) {
     if (ev.opcode === OP_NEW_CHANNEL && ev.kind === "u16") {
       current = { iid: ev.value, kind: "unknown" };
       channels.push(current);
+      scope = "channel";
       continue;
     }
-    if (ev.opcode === OP_CHANNEL_TYPE && ev.kind === "u8" && current) {
+    if (ev.opcode === OP_NEW_SLOT) {
+      scope = "slot";
+      continue;
+    }
+    if (scope !== "channel" || !current) continue;
+
+    if (ev.opcode === OP_CHANNEL_TYPE && ev.kind === "u8") {
       current.kind = classifyChannelKind(ev.value);
       continue;
     }
-    if (ev.opcode === OP_CHANNEL_SAMPLE_PATH && ev.kind === "blob" && current) {
+    if (ev.opcode === OP_CHANNEL_SAMPLE_PATH && ev.kind === "blob") {
       current.sample_path = decodeUtf16LeBytes(ev.payload);
+      continue;
+    }
+    if (ev.opcode === OP_NAME && ev.kind === "blob" && current.name === undefined) {
+      current.name = decodeUtf16LeBytes(ev.payload);
       continue;
     }
   }

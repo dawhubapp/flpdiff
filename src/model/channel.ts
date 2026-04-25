@@ -23,6 +23,14 @@ export type Channel = {
   iid: number;
   kind: ChannelKind;
   /**
+   * User-visible channel name. Sourced from opcode `0xCB` (shared with
+   * mixer-slot plugin names — the walker attributes it to the current
+   * channel only while the current scope is a channel, not a slot).
+   * On a freshly-saved base FL 25 sampler channel the default name is
+   * `"Sampler"`.
+   */
+  name?: string;
+  /**
    * Full sample-library path for sampler channels with a sample loaded.
    * Sourced from opcode `0xC4` (SamplePath), a UTF-16LE null-terminated
    * string in a DATA-range blob. Typical form includes FL's library
