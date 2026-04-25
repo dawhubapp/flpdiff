@@ -112,10 +112,12 @@ output on all five FL 25 public fixtures.
 
 | Opcode | Kind | Semantic | Payload layout | Notes |
 |--------|------|----------|----------------|-------|
+| `0x15` | BYTE (u8) | Channel type | See kind table below | Applies to the channel opened by the most-recent `0x40`. Values: 0=sampler, 2=instrument (the reference parser "Native"), 3=layer, 4=instrument, 5=automation. |
+| `0x36` | FL25 override (`utf16_zterm`) | FL version banner | UTF-16LE null-terminated | Full product-edition-and-version label, e.g. `"FL Studio 25.2.4.4960.4960\0"`. See §2.2. |
+| `0x40` | WORD (u16 LE) | New channel | Channel iid (uint16) | Announces a new channel. Subsequent channel-scoped events up to the next `0x40` belong to this iid. iids are contiguous `0..n-1` across the project. |
 | `0x9C` | DWORD (u32 LE) | Tempo | `bpm × 1000` | `120000` → 120.0 BPM. Verified via `cycle.py` sweeps at 100/120/130/145/160 BPM (dev repo's `docs/fl25-event-format.md`). |
 | `0x9F` | DWORD (u32 LE) | FL build number | uint32 | Value `4960` corresponds to FL Studio 25.2.4 build 4960. |
 | `0xC7` | DATA (varint + bytes) | FL version (ASCII) | Null-terminated ASCII | `"25.2.4.4960\0"`, 12 bytes on FL 25.2.4. Duplicated by the UTF-16 banner at `0x36` — the two strings serve different consumers. |
-| `0x36` | FL25 override (`utf16_zterm`) | FL version banner | UTF-16LE null-terminated | Full product-edition-and-version label, e.g. `"FL Studio 25.2.4.4960.4960\0"`. See §2.2. |
 
 ### 3.2 Observed opcodes (parser handles, semantics unverified)
 
@@ -251,3 +253,7 @@ Future additions to this spec should follow the same pattern:
   opcode-range rule, `utf16_zterm` FL 25 override for `0x36`, and
   confirmed opcodes `0x9C` / `0x9F` / `0xC7` / `0x36`. Observed
   opcodes listed for orientation.
+- **2026-04-18** (later) — Added `0x40` (NewChannel) and `0x15`
+  (channel-type enum) to the confirmed catalog. Channel-kind value table
+  (0/2/3/4/5) documented. Boundary rule captured: events between
+  two `0x40`s belong to the first channel.
