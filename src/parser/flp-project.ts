@@ -117,11 +117,28 @@ export function getFLVersionBanner(project: FLPProject): string | undefined {
 }
 
 /**
- * Convenience: pick tempo from opcode 0x9C. Stored as tempo × 1000 (milli-BPM)
- * in a uint32 LE payload (the 0x80-0xBF range).
+ * Convenience: pick tempo from the event stream.
+ *
+ * FL Studio has used three opcodes for tempo across versions:
+ *
+ * | Opcode | Role             | Encoding           | First seen     |
+ * |--------|------------------|--------------------|----------------|
+ * | 0x9C   | Tempo (modern)   | uint32 milli-BPM   | FL 3.4.0+      |
+ * | 0x42   | Tempo coarse     | uint16 integer BPM | pre-FL-3.4.0   |
+ * | 0x5D   | Tempo fine       | uint16 milli-BPM   | FL 3.4.0+      |
+ *
+ * Modern files emit 0x9C. Legacy FL 9/11 files that pre-date the
+ * unified Tempo opcode rely on 0x42 (+ optional 0x5D for decimals).
+ * Walks modern → coarse → fine.
  */
 export function getTempo(project: FLPProject): number | undefined {
-  const ev = project.events.find((e) => e.kind === "u32" && e.opcode === 0x9c);
-  if (!ev || ev.kind !== "u32") return undefined;
-  return ev.value / 1000;
+  const modern = project.events.find((e) => e.kind === "u32" && e.opcode === 0x9c);
+  if (modern && modern.kind === "u32") return modern.value / 1000;
+
+  const coarse = project.events.find((e) => e.kind === "u16" && e.opcode === 0x42);
+  if (!coarse || coarse.kind !== "u16") return undefined;
+  let tempo = coarse.value;
+  const fine = project.events.find((e) => e.kind === "u16" && e.opcode === 0x5d);
+  if (fine && fine.kind === "u16") tempo += fine.value / 1000;
+  return tempo;
 }

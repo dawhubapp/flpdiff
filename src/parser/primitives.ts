@@ -149,6 +149,12 @@ export const utf8NullTermString: Utf8NullTermStringSchema = new Utf8NullTermStri
  * second-pass helper for event handlers.
  */
 export function decodeUtf16LeBytes(bytes: Uint8Array): string {
+  // UTF-16LE uses 2 bytes per code unit; a payload with fewer than 2
+  // bytes cannot represent a real character. FL 9's legacy mixer
+  // layout emits 1-byte `0x00` placeholders on 0xCC events where no
+  // name exists — treat those as empty rather than decoding to
+  // U+FFFD replacement chars.
+  if (bytes.length < 2) return "";
   let end = bytes.length;
   for (let i = 0; i + 1 < bytes.length; i += 2) {
     if (bytes[i] === 0 && bytes[i + 1] === 0) {

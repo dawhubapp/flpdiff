@@ -317,7 +317,13 @@ export function buildMixerInserts(events: readonly FLPEvent[]): MixerInsert[] {
     }
     if (ev.opcode === OP_INSERT_NAME && ev.kind === "blob" && pendingInsert.name === undefined) {
       inMixerSection = true;
-      pendingInsert.name = decodeUtf16LeBytes(ev.payload);
+      // FL emits 0xCC as a 1-byte null-only placeholder on every insert
+      // of a legacy (FL 9-era) mixer layout — the event announces the
+      // insert boundary, not a user-assigned name. Python skips these
+      // empty payloads (they decode to ""); mirror that so
+      // `named_inserts` matches across FL versions.
+      const name = decodeUtf16LeBytes(ev.payload);
+      if (name.length > 0) pendingInsert.name = name;
       continue;
     }
     if (ev.opcode === OP_INSERT_COLOR && ev.kind === "u32" && pendingInsert.color === undefined && inMixerSection) {
