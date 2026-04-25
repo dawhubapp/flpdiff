@@ -20,3 +20,12 @@ export type { Pattern } from "./model/pattern.ts";
 export { formatPatternSummary } from "./model/pattern.ts";
 export type { Arrangement } from "./model/arrangement.ts";
 export { formatArrangementSummary } from "./model/arrangement.ts";
+export type {
+  ProjectSummary,
+  ChannelSummary,
+  SlotSummary,
+  InsertSummary,
+  PatternSummary,
+  ArrangementSummary,
+} from "./summary.ts";
+export { buildProjectSummary } from "./summary.ts";
