@@ -22,7 +22,40 @@ export type Channel = {
   /** Stable FL-assigned channel index from opcode 0x40. */
   iid: number;
   kind: ChannelKind;
+  /**
+   * Full sample-library path for sampler channels with a sample loaded.
+   * Sourced from opcode `0xC4` (SamplePath), a UTF-16LE null-terminated
+   * string in a DATA-range blob. Typical form includes FL's library
+   * tokens, e.g. `%FLStudioFactoryData%/Data/Patches/Packs/Drums/…`.
+   * Undefined for channels without a sample (non-sampler kinds, or
+   * samplers before a file is dragged in).
+   */
+  sample_path?: string;
 };
+
+/**
+ * Extract the filename component of a sample_path — the last
+ * path segment after the final '/' or '\'. Mirrors what Python's
+ * `flp-info` prints under "Samples:".
+ */
+export function sampleFilename(path: string): string {
+  const lastFwd = path.lastIndexOf("/");
+  const lastBack = path.lastIndexOf("\\");
+  const i = Math.max(lastFwd, lastBack);
+  return i < 0 ? path : path.slice(i + 1);
+}
+
+/**
+ * Comma-separated filenames of channels with a sample, in declaration
+ * order. Returns "(none)" when no channel carries one — matching the
+ * convention in Python's `flp-info` output.
+ */
+export function formatSampleSummary(channels: readonly Channel[]): string {
+  const names = channels
+    .filter((c) => c.sample_path !== undefined)
+    .map((c) => sampleFilename(c.sample_path!));
+  return names.length === 0 ? "(none)" : names.join(", ");
+}
 
 export function classifyChannelKind(raw: number): ChannelKind {
   switch (raw) {

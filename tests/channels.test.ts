@@ -4,6 +4,8 @@ import {
   parseFLPFile,
   countChannelsByKind,
   formatChannelSummary,
+  formatSampleSummary,
+  sampleFilename,
   type Channel,
 } from "../src/index.ts";
 
@@ -59,6 +61,53 @@ describe("Channel extraction — oracle parity with Python flp-info", () => {
     const kinds = channels.map((c) => c.kind).sort();
     expect(kinds).toEqual(["instrument", "sampler"]);
     expect(formatChannelSummary(countChannelsByKind(channels))).toBe("1 instrument, 1 sampler");
+  });
+});
+
+describe("Sample paths (opcode 0xC4) — oracle parity", () => {
+  const FACTORY_SAMPLE = "%FLStudioFactoryData%/Data/Patches/Packs/Drums/Kicks/909 Kick.wav";
+
+  test("base_empty.flp: no samples", async () => {
+    const channels = await channelsOf("base_empty.flp");
+    expect(channels.every((c) => c.sample_path === undefined)).toBe(true);
+    expect(formatSampleSummary(channels)).toBe("(none)");
+  });
+
+  test("base_one_channel.flp: one sample, full path + filename", async () => {
+    const channels = await channelsOf("base_one_channel.flp");
+    const withSample = channels.filter((c) => c.sample_path !== undefined);
+    expect(withSample.length).toBe(1);
+    expect(withSample[0]!.sample_path).toBe(FACTORY_SAMPLE);
+    expect(formatSampleSummary(channels)).toBe("909 Kick.wav");
+  });
+
+  test("base_one_pattern.flp: same sample appears", async () => {
+    const channels = await channelsOf("base_one_pattern.flp");
+    expect(formatSampleSummary(channels)).toBe("909 Kick.wav");
+  });
+
+  test("base_one_insert.flp: no sample", async () => {
+    const channels = await channelsOf("base_one_insert.flp");
+    expect(formatSampleSummary(channels)).toBe("(none)");
+  });
+
+  test("base_one_serum.flp: no sample (Serum is a VST, not a sampler with a wav)", async () => {
+    const channels = await channelsOf("base_one_serum.flp");
+    expect(formatSampleSummary(channels)).toBe("(none)");
+  });
+});
+
+describe("sampleFilename — pure path helper", () => {
+  test("strips the last forward-slash segment", () => {
+    expect(sampleFilename("%FLStudioFactoryData%/Data/Kicks/909 Kick.wav")).toBe("909 Kick.wav");
+  });
+
+  test("strips the last backslash segment (Windows-style)", () => {
+    expect(sampleFilename("C:\\Users\\me\\Samples\\snare.wav")).toBe("snare.wav");
+  });
+
+  test("returns the whole string if no separator", () => {
+    expect(sampleFilename("bare.wav")).toBe("bare.wav");
   });
 });
 

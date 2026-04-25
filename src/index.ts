@@ -7,4 +7,6 @@ export {
   classifyChannelKind,
   countChannelsByKind,
   formatChannelSummary,
+  formatSampleSummary,
+  sampleFilename,
 } from "./model/channel.ts";

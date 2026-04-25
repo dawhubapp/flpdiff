@@ -1,4 +1,5 @@
 import type { FLPEvent } from "./event.ts";
+import { decodeUtf16LeBytes } from "./primitives.ts";
 import { type Channel, classifyChannelKind } from "../model/channel.ts";
 
 /**
@@ -9,6 +10,7 @@ import { type Channel, classifyChannelKind } from "../model/channel.ts";
  */
 const OP_NEW_CHANNEL = 0x40;
 const OP_CHANNEL_TYPE = 0x15;
+const OP_CHANNEL_SAMPLE_PATH = 0xc4;
 
 /**
  * Walks the event stream and accumulates channels.
@@ -33,6 +35,10 @@ export function buildChannels(events: readonly FLPEvent[]): Channel[] {
     }
     if (ev.opcode === OP_CHANNEL_TYPE && ev.kind === "u8" && current) {
       current.kind = classifyChannelKind(ev.value);
+      continue;
+    }
+    if (ev.opcode === OP_CHANNEL_SAMPLE_PATH && ev.kind === "blob" && current) {
+      current.sample_path = decodeUtf16LeBytes(ev.payload);
       continue;
     }
   }
