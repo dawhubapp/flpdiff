@@ -58,9 +58,9 @@ describe("formatPatternSummary — plural correctness", () => {
     expect(formatPatternSummary([])).toBe("0 patterns");
   });
   test("1 → '1 pattern' (singular)", () => {
-    expect(formatPatternSummary([{ id: 0 }])).toBe("1 pattern");
+    expect(formatPatternSummary([{ id: 0, notes: [] }])).toBe("1 pattern");
   });
   test("2 → '2 patterns' (plural)", () => {
-    expect(formatPatternSummary([{ id: 0 }, { id: 1 }])).toBe("2 patterns");
+    expect(formatPatternSummary([{ id: 0, notes: [] }, { id: 1, notes: [] }])).toBe("2 patterns");
   });
 });

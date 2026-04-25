@@ -3,7 +3,7 @@ import { decodeUtf16LeBytes } from "./primitives.ts";
 import { decodeVSTWrapper } from "./vst-wrapper.ts";
 import { type Channel, classifyChannelKind, unpackRGBA } from "../model/channel.ts";
 import type { MixerInsert, MixerSlot } from "../model/mixer-insert.ts";
-import type { Pattern } from "../model/pattern.ts";
+import { type Pattern, decodeNotes } from "../model/pattern.ts";
 import type { Arrangement } from "../model/arrangement.ts";
 
 /**
@@ -55,6 +55,13 @@ const OP_INSERT_NAME = 0xcc;
 const OP_PATTERN_NEW = 0x41;
 /** Per-pattern name (UTF-16LE null-terminated). */
 const OP_PATTERN_NAME = 0xc1;
+/**
+ * Per-pattern note list. FL 25 emits notes at `0xE0`; pre-FL-25
+ * saves emit them at `0xD0` (one of several FL 25 +16 relocations
+ * also seen with track data). Payload is a dense array of 24-byte
+ * note records; see `decodeNotes`.
+ */
+const OP_PATTERN_NOTES = 0xe0;
 /**
  * Arrangement identity marker (uint16 LE id). FL 25 base projects
  * have exactly one, id=0, default name "Arrangement".
@@ -244,12 +251,21 @@ export function buildPatterns(events: readonly FLPEvent[]): Pattern[] {
   for (const ev of events) {
     if (ev.opcode === OP_PATTERN_NEW && ev.kind === "u16") {
       currentId = ev.value;
-      if (!byId.has(currentId)) byId.set(currentId, { id: currentId });
+      if (!byId.has(currentId)) byId.set(currentId, { id: currentId, notes: [] });
       continue;
     }
     if (ev.opcode === OP_PATTERN_NAME && ev.kind === "blob" && currentId !== undefined) {
       const p = byId.get(currentId);
       if (p && p.name === undefined) p.name = decodeUtf16LeBytes(ev.payload);
+      continue;
+    }
+    if (ev.opcode === OP_PATTERN_NOTES && ev.kind === "blob" && currentId !== undefined) {
+      const p = byId.get(currentId);
+      if (p) {
+        // Multiple 0xE0 blobs within a pattern are concatenated in
+        // stream order — preserves timeline ordering.
+        for (const note of decodeNotes(ev.payload)) p.notes.push(note);
+      }
       continue;
     }
   }

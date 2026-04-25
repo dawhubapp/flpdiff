@@ -100,7 +100,29 @@ const ORACLE: Record<string, ProjectSummary> = {
       { iid: 1, kind: "sampler", name: "Kick", sample_path: FACTORY_909_KICK, color: CHANNEL2_COLOR },
     ],
     inserts: DEFAULT_INSERTS,
-    patterns: [{ id: 1, name: "P1" }],
+    patterns: [
+      {
+        id: 1,
+        name: "P1",
+        notes: [
+          {
+            position: 0,
+            flags: 0x4000,
+            channel_iid: 1,
+            length: 48,
+            key: 63,
+            group: 0,
+            fine_pitch: 120,
+            release: 64,
+            midi_channel: 0,
+            pan: 64,
+            velocity: 100,
+            mod_x: 128,
+            mod_y: 128,
+          },
+        ],
+      },
+    ],
     arrangements: DEFAULT_ARRANGEMENT,
   },
 

@@ -125,6 +125,7 @@ output on all five FL 25 public fixtures.
 | `0xC1` | DATA (varint + bytes) | Pattern name | Null-terminated UTF-16LE | User-set pattern name (e.g. `"P1"`). Absent for unnamed patterns. Scoped to the pattern id most recently announced by `0x41`. |
 | `0xC9` | DATA (varint + bytes) | Plugin internal class name | Null-terminated UTF-16LE | the plugin internal-name event — FL's identifier for the plugin's wrapper class. For native plugins (e.g. mixer-slot Fruity EQ 2) this matches the display name. For VST-wrapped channel-hosted plugins the payload is `"Fruity Wrapper"` (generic FL VST host); the real VST name (`"Serum"`, etc.) lives inside the `0xD5` plugin-state blob — see below. Sampler channels emit an empty `0xC9` as a placeholder — walkers should treat zero-length payloads as "no plugin". |
 | `0xD5` | DATA (varint + bytes) | Plugin state blob | Plugin-specific binary | the plugin-state event. For **VST-wrapped** plugins (internalName `"Fruity Wrapper"`) the payload is the FL VST-wrapper record stream: 4-byte `type` header (first byte = FL serialization marker, one of 6/8/9/10/11/12), then repeating `{uint32 id, uint64 len, N bytes data}` records. Relevant record ids: 54=Name (UTF-8), 56=Vendor (UTF-8), 55=PluginPath, 51=FourCC, 52=GUID, 53=State (opaque preset data). For **native** FL plugins (e.g. Fruity Parametric EQ 2) the payload is plugin-specific state — the VST-wrapper record format does not apply; decode per-plugin. |
+| `0xE0` | DATA (varint + bytes) | Pattern notes (FL 25) | Dense array of 24-byte records | the pattern-notes event on FL 25. **the reference parser lists this at `DATA+16 = 0xD0`, but FL 25 saves emit notes at `DATA+32 = 0xE0`** — another self-discovered FL 25 opcode relocation (alongside the `0xEE` track-data move). Each record: `uint32 position`, `uint16 flags`, `uint16 rack_channel`, `uint32 length`, `uint16 key`, `uint16 group`, `uint8 fine_pitch`, `uint8 _reserved`, `uint8 release`, `uint8 midi_channel`, `uint8 pan`, `uint8 velocity`, `uint8 mod_x`, `uint8 mod_y`. All lengths in PPQ ticks. |
 | `0xC4` | DATA (varint + bytes) | Channel sample path | Null-terminated UTF-16LE | Full library path for the current channel's sample, e.g. `"%FLStudioFactoryData%/Data/Patches/Packs/Drums/Kicks/909 Kick.wav\0"`. Absent when the channel has no sample loaded (non-sampler kinds, or samplers before a file is dragged in). Scoped to the channel opened by the most-recent `0x40`. |
 | `0xC7` | DATA (varint + bytes) | FL version (ASCII) | Null-terminated ASCII | `"25.2.4.4960\0"`, 12 bytes on FL 25.2.4. Duplicated by the UTF-16 banner at `0x36` — the two strings serve different consumers. |
 | `0xCB` | DATA (varint + bytes) | Channel/slot name (shared) | Null-terminated UTF-16LE | **Scope-sensitive.** In channel scope (after `0x40`, before any `0x62`) it's the channel name, e.g. `"Sampler"` / `"Kick"` / `"SerumTest"`. In slot scope (after `0x62`) it's the hosted plugin's display name, e.g. `"Fruity Parametric EQ 2"`. Walkers must track the current scope to attribute correctly. |
@@ -305,7 +306,16 @@ Future additions to this spec should follow the same pattern:
   insert (slots 0..9), even for empty slots. Mixer walker now
   accumulates a `pendingSlot` and pushes it to the insert's
   slots[] on each `0x62`, using the `0x62` value as the slot index.
-- **2026-04-19** (later) — Added `0x80` (the plugin-color event,
+- **2026-04-19** (later still) — Added `0xE0` pattern notes
+  decoder. First musical-content primitive the parser decodes.
+  24-byte fixed-record stream; each record is a full Note
+  (position, key, length, velocity, channel-iid, fine-pitch,
+  pan, release, mod-x/y). **Second FL 25 opcode relocation
+  observed**: pre-FL-25 saves emit notes at `0xD0`, FL 25 at
+  `0xE0`. Validated against Python `flp-info` on
+  `base_one_pattern.flp` — the single 909-Kick note decodes
+  exactly.
+- **2026-04-19** (later) — Added `0x80` (channel/plugin color,
   uint32 LE). RGBA bytes in LE order `[R, G, B, A]`. FL defaults
   freshly-created sampler channels to `0x00484541` (gray).
   `base_one_channel`'s second channel gets `0x006a655c` (a lighter

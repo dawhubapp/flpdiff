@@ -17,8 +17,8 @@ export {
   countActiveSlots,
   formatMixerSummary,
 } from "./model/mixer-insert.ts";
-export type { Pattern } from "./model/pattern.ts";
-export { formatPatternSummary } from "./model/pattern.ts";
+export type { Pattern, Note } from "./model/pattern.ts";
+export { formatPatternSummary, decodeNotes } from "./model/pattern.ts";
 export type { Arrangement } from "./model/arrangement.ts";
 export { formatArrangementSummary } from "./model/arrangement.ts";
 export type {

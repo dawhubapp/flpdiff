@@ -1,6 +1,7 @@
 import type { FLPProject } from "./parser/flp-project.ts";
 import { getTempo } from "./parser/flp-project.ts";
 import type { RGBA } from "./model/channel.ts";
+import type { Note } from "./model/pattern.ts";
 
 /**
  * Flat structural snapshot of what the parser currently decodes. Omits
@@ -45,6 +46,7 @@ export type InsertSummary = {
 export type PatternSummary = {
   id: number;
   name?: string;
+  notes: Note[];
 };
 
 export type ArrangementSummary = {
@@ -95,7 +97,7 @@ function pickInsert(ins: FLPProject["inserts"][number]): InsertSummary {
 }
 
 function pickPattern(p: FLPProject["patterns"][number]): PatternSummary {
-  const out: PatternSummary = { id: p.id };
+  const out: PatternSummary = { id: p.id, notes: p.notes.map((n) => ({ ...n })) };
   if (p.name !== undefined) out.name = p.name;
   return out;
 }
