@@ -5,6 +5,7 @@ import {
   countNamedInserts,
   countActiveSlots,
   formatMixerSummary,
+  decodeMixerParams,
   type MixerInsert,
 } from "../src/index.ts";
 
@@ -79,6 +80,61 @@ describe("Insert color/icon/routing defaults (0x95, 0x5F, 0x93, 0x9A)", () => {
       expect(ins.output).toBeUndefined();
       expect(ins.input).toBeUndefined();
     }
+  });
+});
+
+describe("MixerParams blob (opcode 0xE1) — raw record decoder", () => {
+  test.each([
+    "base_empty.flp",
+    "base_one_channel.flp",
+    "base_one_insert.flp",
+    "base_one_pattern.flp",
+    "base_one_serum.flp",
+  ])("%s: 0xE1 decodes to exactly (payload / 12) records", async (name) => {
+    const buf = await Bun.file(resolve(CORPUS_DIR, name)).arrayBuffer();
+    const project = parseFLPFile(buf);
+    const e1 = project.events.find((e) => e.opcode === 0xe1);
+    expect(e1).toBeDefined();
+    if (e1!.kind !== "blob") throw new Error("unreachable");
+    const records = decodeMixerParams(e1!.payload);
+    expect(records.length * 12).toBe(e1!.payload.byteLength);
+    // All records must have one of the documented id values.
+    const validIds = new Set([0, 1, 192, 193, 194, 208, 209, 210, 216, 217, 218, 224, 225, 226]);
+    // Plus the 64..191 RouteVolStart range (send-level routing).
+    for (const rec of records) {
+      const isRoute = rec.id >= 64 && rec.id <= 191;
+      expect(validIds.has(rec.id) || isRoute).toBe(true);
+    }
+  });
+
+  test("base_empty: finds SlotEnabled records for expected sparse insert indices", async () => {
+    const buf = await Bun.file(resolve(CORPUS_DIR, "base_empty.flp")).arrayBuffer();
+    const project = parseFLPFile(buf);
+    const e1 = project.events.find((e) => e.opcode === 0xe1)!;
+    if (e1.kind !== "blob") throw new Error("unreachable");
+    const records = decodeMixerParams(e1.payload);
+
+    // FL 25's insert_idx packing is sparse — records exist for indices
+    // well outside the visible 0..17 range. Regression-guard that at
+    // least one record has insert_idx > 50 (confirming the sparsity
+    // observation and that attribution isn't a simple `== visible_idx`).
+    const sparseIdx = records.filter((r) => r.insertIdx > 50);
+    expect(sparseIdx.length).toBeGreaterThan(0);
+  });
+
+  test("decodeMixerParams: payload not a multiple of 12 yields empty array", () => {
+    expect(decodeMixerParams(new Uint8Array(11))).toEqual([]);
+    expect(decodeMixerParams(new Uint8Array(0))).toEqual([]);
+  });
+
+  test("decodeMixerParams: crafted record extracts all four fields", () => {
+    const buf = new Uint8Array(12);
+    const view = new DataView(buf.buffer);
+    view.setUint8(4, 192); // id = Volume
+    view.setUint16(6, (3 << 6) | 5, true); // insert 3, slot 5
+    view.setInt32(8, 9500, true);
+
+    expect(decodeMixerParams(buf)).toEqual([{ id: 192, insertIdx: 3, slotIdx: 5, msg: 9500 }]);
   });
 });
 

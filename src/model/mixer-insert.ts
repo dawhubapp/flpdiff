@@ -37,6 +37,56 @@ export type InsertFlags = {
   audioTrack: boolean;
 };
 
+/**
+ * One record inside the `0xE1` MixerParams blob — a 12-byte entry
+ * describing a single per-insert or per-slot parameter value.
+ *
+ * Layout (verified against direct byte inspection of `base_empty.flp`'s
+ * 6924-byte payload, 577 records):
+ *
+ *   0..3   reserved
+ *   4      id (uint8) — known values:
+ *            0   = SlotEnabled
+ *            1   = SlotMix
+ *            64..191 = RouteVolStart (send-level routing)
+ *            192 = Volume
+ *            193 = Pan
+ *            194 = StereoSeparation
+ *            208/209/210 = Low/Mid/High Gain
+ *            216/217/218 = Low/Mid/High Freq
+ *            224/225/226 = Low/Mid/High Q
+ *   5      reserved
+ *   6..7   channel_data (uint16 LE): (insert_idx << 6) | slot_idx
+ *   8..11  msg (int32 LE) — parameter value
+ *
+ * **Known limitation**: FL 25's `insert_idx` packing is sparse and
+ * does NOT cleanly map to the visible insert indices (0..17). A
+ * single base_empty save contains records for insert_idx values like
+ * 0, 53, 64..80 — reflecting some internal FL allocation scheme we
+ * haven't reverse-engineered yet. The parser exposes raw records via
+ * `decodeMixerParams(payload)` but does NOT attribute them back to
+ * `MixerInsert.slots[].enabled` / `.mix` pending further work.
+ */
+export type MixerParamRecord = {
+  id: number;
+  insertIdx: number;
+  slotIdx: number;
+  msg: number;
+};
+
+export function decodeMixerParams(payload: Uint8Array): MixerParamRecord[] {
+  const out: MixerParamRecord[] = [];
+  if (payload.byteLength % 12 !== 0) return out;
+  const view = new DataView(payload.buffer, payload.byteOffset, payload.byteLength);
+  for (let p = 0; p + 12 <= payload.byteLength; p += 12) {
+    const id = view.getUint8(p + 4);
+    const cd = view.getUint16(p + 6, true);
+    const msg = view.getInt32(p + 8, true);
+    out.push({ id, insertIdx: (cd >> 6) & 0x7f, slotIdx: cd & 0x3f, msg });
+  }
+  return out;
+}
+
 export function decodeInsertFlags(payload: Uint8Array): InsertFlags | undefined {
   if (payload.byteLength < 12) return undefined;
   const view = new DataView(payload.buffer, payload.byteOffset, payload.byteLength);

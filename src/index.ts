@@ -12,12 +12,18 @@ export {
   unpackRGBA,
   decodeLevels,
 } from "./model/channel.ts";
-export type { MixerInsert, MixerSlot, InsertFlags } from "./model/mixer-insert.ts";
+export type {
+  MixerInsert,
+  MixerSlot,
+  InsertFlags,
+  MixerParamRecord,
+} from "./model/mixer-insert.ts";
 export {
   countNamedInserts,
   countActiveSlots,
   formatMixerSummary,
   decodeInsertFlags,
+  decodeMixerParams,
 } from "./model/mixer-insert.ts";
 export type { Pattern, Note } from "./model/pattern.ts";
 export { formatPatternSummary, decodeNotes } from "./model/pattern.ts";
