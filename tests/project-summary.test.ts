@@ -27,6 +27,20 @@ const DEFAULT_CHANNEL_COLOR = { r: 65, g: 69, b: 72, a: 0 };
 /** Lighter gray that FL assigns to the second-created sampler channel. */
 const CHANNEL2_COLOR = { r: 92, g: 101, b: 106, a: 0 };
 
+/**
+ * FL's default channel Levels struct. Every unchanged channel on every
+ * current fixture has these exact values (both first-created and
+ * user-added channels start with them).
+ */
+const DEFAULT_LEVELS = {
+  pan: 6400,
+  volume: 10000,
+  pitch_shift: 0,
+  filter_mod_x: 256,
+  filter_mod_y: 0,
+  filter_type: 0,
+};
+
 // Every FL 25 base project we have emits 18 empty inserts (master + 17).
 // Each insert carries 10 empty slots with indices 0..9.
 const DEFAULT_INSERTS: InsertSummary[] = Array.from({ length: 18 }, (_, i) => ({
@@ -54,7 +68,7 @@ const ORACLE: Record<string, ProjectSummary> = {
   "base_empty.flp": {
     ppq: 96,
     tempo: 120,
-    channels: [{ iid: 0, kind: "sampler", name: "Sampler", color: DEFAULT_CHANNEL_COLOR }],
+    channels: [{ iid: 0, kind: "sampler", name: "Sampler", color: DEFAULT_CHANNEL_COLOR, levels: DEFAULT_LEVELS }],
     inserts: DEFAULT_INSERTS,
     patterns: [],
     arrangements: DEFAULT_ARRANGEMENT,
@@ -64,8 +78,8 @@ const ORACLE: Record<string, ProjectSummary> = {
     ppq: 96,
     tempo: 120,
     channels: [
-      { iid: 0, kind: "sampler", name: "Sampler", color: DEFAULT_CHANNEL_COLOR },
-      { iid: 1, kind: "sampler", name: "Kick", sample_path: FACTORY_909_KICK, color: CHANNEL2_COLOR },
+      { iid: 0, kind: "sampler", name: "Sampler", color: DEFAULT_CHANNEL_COLOR, levels: DEFAULT_LEVELS },
+      { iid: 1, kind: "sampler", name: "Kick", sample_path: FACTORY_909_KICK, color: CHANNEL2_COLOR, levels: DEFAULT_LEVELS },
     ],
     inserts: DEFAULT_INSERTS,
     patterns: [],
@@ -75,7 +89,7 @@ const ORACLE: Record<string, ProjectSummary> = {
   "base_one_insert.flp": {
     ppq: 96,
     tempo: 120,
-    channels: [{ iid: 0, kind: "sampler", name: "Sampler", color: DEFAULT_CHANNEL_COLOR }],
+    channels: [{ iid: 0, kind: "sampler", name: "Sampler", color: DEFAULT_CHANNEL_COLOR, levels: DEFAULT_LEVELS }],
     inserts: DEFAULT_INSERTS.map((ins, i) =>
       i === 1
         ? {
@@ -96,8 +110,8 @@ const ORACLE: Record<string, ProjectSummary> = {
     ppq: 96,
     tempo: 120,
     channels: [
-      { iid: 0, kind: "sampler", name: "Sampler", color: DEFAULT_CHANNEL_COLOR },
-      { iid: 1, kind: "sampler", name: "Kick", sample_path: FACTORY_909_KICK, color: CHANNEL2_COLOR },
+      { iid: 0, kind: "sampler", name: "Sampler", color: DEFAULT_CHANNEL_COLOR, levels: DEFAULT_LEVELS },
+      { iid: 1, kind: "sampler", name: "Kick", sample_path: FACTORY_909_KICK, color: CHANNEL2_COLOR, levels: DEFAULT_LEVELS },
     ],
     inserts: DEFAULT_INSERTS,
     patterns: [
@@ -132,7 +146,7 @@ const ORACLE: Record<string, ProjectSummary> = {
     ppq: 96,
     tempo: 120,
     channels: [
-      { iid: 0, kind: "sampler", name: "Sampler", color: DEFAULT_CHANNEL_COLOR },
+      { iid: 0, kind: "sampler", name: "Sampler", color: DEFAULT_CHANNEL_COLOR, levels: DEFAULT_LEVELS },
       {
         iid: 1,
         kind: "instrument",
@@ -143,6 +157,7 @@ const ORACLE: Record<string, ProjectSummary> = {
           vendor: "Xfer Records",
         },
         color: DEFAULT_CHANNEL_COLOR,
+        levels: DEFAULT_LEVELS,
       },
     ],
     inserts: DEFAULT_INSERTS,

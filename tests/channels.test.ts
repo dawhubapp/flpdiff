@@ -7,6 +7,7 @@ import {
   formatSampleSummary,
   sampleFilename,
   unpackRGBA,
+  decodeLevels,
   type Channel,
 } from "../src/index.ts";
 
@@ -205,6 +206,55 @@ describe("unpackRGBA — uint32 LE layout [R, G, B, A]", () => {
   test("all-zeros and all-ones edge values", () => {
     expect(unpackRGBA(0)).toEqual({ r: 0, g: 0, b: 0, a: 0 });
     expect(unpackRGBA(0xffffffff)).toEqual({ r: 255, g: 255, b: 255, a: 255 });
+  });
+});
+
+describe("Channel Levels (opcode 0xDB, 24-byte struct)", () => {
+  const DEFAULT_LEVELS = {
+    pan: 6400,
+    volume: 10000,
+    pitch_shift: 0,
+    filter_mod_x: 256,
+    filter_mod_y: 0,
+    filter_type: 0,
+  };
+
+  test.each([
+    "base_empty.flp",
+    "base_one_channel.flp",
+    "base_one_insert.flp",
+    "base_one_pattern.flp",
+    "base_one_serum.flp",
+  ])("%s: every channel has default Levels", async (name) => {
+    const channels = await channelsOf(name);
+    for (const ch of channels) {
+      expect(ch.levels).toEqual(DEFAULT_LEVELS);
+    }
+  });
+
+  test("decodeLevels: crafted payload round-trips via DataView", () => {
+    const buf = new Uint8Array(24);
+    const view = new DataView(buf.buffer);
+    view.setInt32(0, -3200, true);     // pan (sign-ed)
+    view.setUint32(4, 9000, true);     // volume
+    view.setInt32(8, 256, true);       // pitch_shift
+    view.setUint32(12, 100, true);
+    view.setUint32(16, 200, true);
+    view.setUint32(20, 3, true);
+
+    expect(decodeLevels(buf)).toEqual({
+      pan: -3200,
+      volume: 9000,
+      pitch_shift: 256,
+      filter_mod_x: 100,
+      filter_mod_y: 200,
+      filter_type: 3,
+    });
+  });
+
+  test("decodeLevels: payload < 24 bytes yields undefined", () => {
+    expect(decodeLevels(new Uint8Array(23))).toBeUndefined();
+    expect(decodeLevels(new Uint8Array(0))).toBeUndefined();
   });
 });
 

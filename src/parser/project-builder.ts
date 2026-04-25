@@ -1,7 +1,7 @@
 import type { FLPEvent } from "./event.ts";
 import { decodeUtf16LeBytes } from "./primitives.ts";
 import { decodeVSTWrapper } from "./vst-wrapper.ts";
-import { type Channel, classifyChannelKind, unpackRGBA } from "../model/channel.ts";
+import { type Channel, classifyChannelKind, unpackRGBA, decodeLevels } from "../model/channel.ts";
 // unpackRGBA is re-used for pattern color (0x96) — same byte packing as 0x80.
 import type { MixerInsert, MixerSlot } from "../model/mixer-insert.ts";
 import { type Pattern, decodeNotes } from "../model/pattern.ts";
@@ -27,6 +27,11 @@ const OP_PLUGIN_INTERNAL_NAME = 0xc9;
  * clean.
  */
 const OP_PLUGIN_COLOR = 0x80;
+/**
+ * Channel levels struct. 24-byte blob with 6 × int32 fields: pan,
+ * volume, pitch_shift, filter_mod_x, filter_mod_y, filter_type.
+ */
+const OP_CHANNEL_LEVELS = 0xdb;
 /**
  * Plugin state blob. For VST-wrapped plugins
  * (`internalName === "Fruity Wrapper"`) the payload is the FL
@@ -130,6 +135,11 @@ export function buildChannels(events: readonly FLPEvent[]): Channel[] {
     }
     if (ev.opcode === OP_PLUGIN_COLOR && ev.kind === "u32" && current.color === undefined) {
       current.color = unpackRGBA(ev.value);
+      continue;
+    }
+    if (ev.opcode === OP_CHANNEL_LEVELS && ev.kind === "blob" && current.levels === undefined) {
+      const levels = decodeLevels(ev.payload);
+      if (levels !== undefined) current.levels = levels;
       continue;
     }
     if (ev.opcode === OP_CHANNEL_SAMPLE_PATH && ev.kind === "blob") {

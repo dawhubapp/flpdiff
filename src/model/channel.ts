@@ -63,10 +63,57 @@ export function unpackRGBA(value: number): RGBA {
   };
 }
 
+/**
+ * Per-channel raw levels struct from opcode `0xDB` on FL 25
+ * (pre-FL-25 saves emit Levels at `0xCB`; the 24-byte struct
+ * lives at `0xDB` on FL 25, one blob per channel).
+ *
+ * All values are raw FL-internal integers — no normalization to
+ * 0..1. Consumers that want "normalized" values should divide:
+ *   volume / 12800   (Python flp-info's convention, so 10000 → 0.78125)
+ *   pan    / 6400    (Python flp-info's convention, so 6400 → 1.0)
+ * Other fields stored as-is; interpretation depends on per-field
+ * convention we haven't catalogued yet.
+ */
+export type Levels = {
+  /** Raw pan. Default 6400 on a fresh channel. */
+  pan: number;
+  /** Raw volume. Default 10000 on a fresh channel (= 0.78125 normalized). */
+  volume: number;
+  /** Raw pitch-shift, default 0. */
+  pitch_shift: number;
+  /** Filter envelope mod-X. */
+  filter_mod_x: number;
+  /** Filter envelope mod-Y. */
+  filter_mod_y: number;
+  /** Filter type enum value (FastLP/LP/BP/HP/BS/LPx2/SVFLP/SVFLPx2, 0..7). */
+  filter_type: number;
+};
+
+export function decodeLevels(payload: Uint8Array): Levels | undefined {
+  if (payload.byteLength < 24) return undefined;
+  const view = new DataView(payload.buffer, payload.byteOffset, payload.byteLength);
+  return {
+    pan: view.getInt32(0, true),
+    volume: view.getUint32(4, true),
+    pitch_shift: view.getInt32(8, true),
+    filter_mod_x: view.getUint32(12, true),
+    filter_mod_y: view.getUint32(16, true),
+    filter_type: view.getUint32(20, true),
+  };
+}
+
 export type Channel = {
   /** Stable FL-assigned channel index from opcode 0x40. */
   iid: number;
   kind: ChannelKind;
+  /**
+   * Per-channel volume/pan/pitch-shift/filter struct decoded from the
+   * 24-byte `0xDB` blob. Absent if FL didn't emit a Levels event on
+   * this channel (shouldn't happen on modern FL 25 saves — every
+   * channel carries a Levels blob even when values are defaults).
+   */
+  levels?: Levels;
   /**
    * Channel color from opcode `0x80`. FL assigns a default gray
    * (`{r: 65, g: 69, b: 72, a: 0}`) to fresh sampler channels;
