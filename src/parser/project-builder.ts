@@ -308,6 +308,20 @@ export function buildMixerInserts(events: readonly FLPEvent[]): MixerInsert[] {
    */
   let pendingSlot: MixerSlot = { index: 0 };
   /**
+   * Tracks whether the current insert has seen its first slot-index
+   * (0x62) marker yet. The reference parser's slot-divide step skips
+   * the FIRST separator (doesn't yield a group before it); subsequent
+   * separators each close a slot group. Concretely: events BEFORE
+   * 0x62 value=0 AND events BETWEEN 0x62 value=0 AND 0x62 value=1
+   * both belong to slot 0 in the reference's accounting. Our walker
+   * used to push a slot on EVERY 0x62, creating a phantom extra slot
+   * whenever plugin events straddled the first marker — a 46-slot
+   * over-count on one fixture. We now match: swallow the first 0x62
+   * per insert, push only on subsequent ones, then flush the final
+   * pendingSlot at 0x93.
+   */
+  let firstSlotSeen = false;
+  /**
    * True once we've seen any insert-section marker — 0x62 (slot close),
    * 0x93 (insert close), or 0xCC (insert name). Before this point, the
    * walker is still in the channel section of the stream and must not
@@ -330,24 +344,39 @@ export function buildMixerInserts(events: readonly FLPEvent[]): MixerInsert[] {
       if (ev.value !== ROUTING_UNSET && ev.value !== pendingInsert.index) {
         pendingInsert.output = ev.value;
       }
-      // pendingSlot at this point holds any trailing events since the
-      // last 0x62 boundary (or since insert start, on FL 9 layouts that
-      // don't emit 0x62 at all). On FL 25 these are insert-level
-      // routing events and get dropped. On FL 9, they're the sole
-      // slot the insert has, so push it if any plugin signal landed.
-      if (pendingSlot.hasPlugin === true || pendingSlot.pluginName !== undefined) {
+      // Final slot flush at insert close. Two layout regimes:
+      //  - FL 25 (10 0x62 markers per insert): the last 0x62 opened
+      //    slot 9; 0x93 closes it. firstSlotSeen is true, so push
+      //    unconditionally.
+      //  - FL 9 (zero 0x62 markers): firstSlotSeen never flipped.
+      //    pendingSlot is the one catch-all slot the reference parser's divide would
+      //    yield. Push only if it carries any plugin signal — otherwise
+      //    the insert genuinely has no slots.
+      if (firstSlotSeen) {
+        pendingInsert.slots.push(pendingSlot);
+      } else if (pendingSlot.hasPlugin === true || pendingSlot.pluginName !== undefined) {
         pendingInsert.slots.push(pendingSlot);
       }
       inserts.push(pendingInsert);
       pendingInsert = { index: inserts.length, slots: [] };
       pendingSlot = { index: 0 };
+      firstSlotSeen = false;
       continue;
     }
     if (ev.opcode === OP_NEW_SLOT && ev.kind === "u16") {
       inMixerSection = true;
-      pendingSlot.index = ev.value;
-      pendingInsert.slots.push(pendingSlot);
-      pendingSlot = { index: ev.value + 1 };
+      if (!firstSlotSeen) {
+        // First 0x62 of this insert: open slot 0, don't push yet.
+        // Events already accumulated on pendingSlot belong to this
+        // slot (per the reference's slot-divide semantics).
+        firstSlotSeen = true;
+        pendingSlot.index = ev.value;
+      } else {
+        // Subsequent 0x62: close the CURRENT slot and open the next.
+        // pendingSlot already has its index from the previous marker.
+        pendingInsert.slots.push(pendingSlot);
+        pendingSlot = { index: ev.value };
+      }
       continue;
     }
     if (ev.opcode === OP_INSERT_NAME && ev.kind === "blob" && pendingInsert.name === undefined) {
