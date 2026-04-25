@@ -116,7 +116,7 @@ const ORACLE: Record<string, ProjectSummary> = {
             name: "Drums",
             flags: MIDDLE_DOCKED_FLAGS,
             slots: [
-              { index: 0, pluginName: "Fruity Parametric EQ 2" },
+              { index: 0, pluginName: "Fruity Parametric EQ 2", hasPlugin: true },
               ...ins.slots.slice(1),
             ],
           }

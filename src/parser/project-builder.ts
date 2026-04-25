@@ -347,6 +347,14 @@ export function buildMixerInserts(events: readonly FLPEvent[]): MixerInsert[] {
       pendingSlot.pluginName = decodeUtf16LeBytes(ev.payload);
       continue;
     }
+    if (ev.opcode === OP_PLUGIN_STATE && ev.kind === "blob" && inMixerSection) {
+      // Mark the pending slot as plugin-bearing. Plugin presence is
+      // keyed off `0xD5` (plugin state) presence in the slot's event
+      // subtree. Captures native plugins that emit `0xD5` without a
+      // companion `0xCB` name event.
+      pendingSlot.hasPlugin = true;
+      continue;
+    }
   }
 
   return inserts;

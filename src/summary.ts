@@ -41,6 +41,7 @@ export type ChannelSummary = {
 export type SlotSummary = {
   index: number;
   pluginName?: string;
+  hasPlugin?: boolean;
 };
 
 export type InsertSummary = {
@@ -110,6 +111,7 @@ function pickInsert(ins: FLPProject["inserts"][number]): InsertSummary {
     slots: ins.slots.map((s) => {
       const slot: SlotSummary = { index: s.index };
       if (s.pluginName !== undefined) slot.pluginName = s.pluginName;
+      if (s.hasPlugin !== undefined) slot.hasPlugin = s.hasPlugin;
       return slot;
     }),
   };

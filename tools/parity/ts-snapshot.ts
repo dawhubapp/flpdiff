@@ -37,7 +37,7 @@ function snapshot(path: string): Snapshot {
   );
   const named_inserts = project.inserts.filter((i) => i.name !== undefined).length;
   const filled_slots = project.inserts.reduce(
-    (a, ins) => a + ins.slots.filter((s) => s.pluginName !== undefined).length,
+    (a, ins) => a + ins.slots.filter((s) => s.hasPlugin === true).length,
     0,
   );
   const tracks_total = project.arrangements.reduce(

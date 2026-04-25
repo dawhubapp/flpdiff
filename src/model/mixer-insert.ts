@@ -11,6 +11,14 @@ export type MixerSlot = {
    * Empty slots leave `pluginName === undefined`.
    */
   pluginName?: string;
+  /**
+   * True when a plugin state event (`0xD5`) appeared in this slot's
+   * scope. Plugin presence is keyed off the `0xD5` data event, not
+   * off the plugin name. Some slots have `0xD5` without a user-set
+   * `0xCB` name (e.g., natively-hosted plugins whose state blob was
+   * saved without a display name); those still count as "filled".
+   */
+  hasPlugin?: boolean;
 };
 
 /**
