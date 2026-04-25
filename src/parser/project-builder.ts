@@ -417,6 +417,21 @@ export function buildPatterns(events: readonly FLPEvent[]): Pattern[] {
 }
 
 /**
+ * Track-index sentinel: a playlist clip's `track_rvidx` must be
+ * `<= max_idx` to be assigned to a track. For FL 12.9.1+ (our scope)
+ * max_idx = 499. For older FL it's 198. FL stores uninitialised /
+ * garbage clip slots with `track_rvidx` values in the 0x8000..0xFFFF
+ * range; those don't belong to any real track and should be dropped.
+ */
+const PLAYLIST_MAX_TRACK_IDX = 499;
+/**
+ * Pattern-vs-channel discriminator. If `item_index <= pattern_base
+ * (20480)` the record references a channel (item_index = iid);
+ * otherwise it references a pattern (id = item_index - pattern_base).
+ */
+const PLAYLIST_PATTERN_BASE = 20480;
+
+/**
  * Walks the event stream and accumulates arrangements.
  *
  * Arrangement-identity rule: opcode `0x63` (uint16 LE)
@@ -428,8 +443,29 @@ export function buildPatterns(events: readonly FLPEvent[]): Pattern[] {
  *
  * FL 25 base projects emit exactly one `0x63` with id=0, name
  * "Arrangement", and 500 `0xEE` events.
+ *
+ * Playlist clips are filtered: records with out-of-range
+ * `track_rvidx` (FL stores garbage sentinel values in uninitialised
+ * slots) and records that reference non-existent channels or
+ * patterns are dropped. This keeps `arrangement.clips` tight to
+ * "clips actually visible on tracks" so downstream diffs don't
+ * churn on orphans.
  */
-export function buildArrangements(events: readonly FLPEvent[]): Arrangement[] {
+export function buildArrangements(
+  events: readonly FLPEvent[],
+  channels: readonly { iid: number }[] = [],
+  patterns: readonly { id: number }[] = [],
+): Arrangement[] {
+  const channelIids = new Set(channels.map((c) => c.iid));
+  const patternIds = new Set(patterns.map((p) => p.id));
+
+  const keepClip = (clip: { item_index: number; track_rvidx: number }): boolean => {
+    if (clip.track_rvidx > PLAYLIST_MAX_TRACK_IDX) return false;
+    if (clip.item_index <= PLAYLIST_PATTERN_BASE) {
+      return channelIids.has(clip.item_index);
+    }
+    return patternIds.has(clip.item_index - PLAYLIST_PATTERN_BASE);
+  };
   const arrangements: Arrangement[] = [];
   let current: Arrangement | undefined;
   /**
@@ -464,7 +500,9 @@ export function buildArrangements(events: readonly FLPEvent[]): Arrangement[] {
       continue;
     }
     if (ev.opcode === OP_PLAYLIST && ev.kind === "blob") {
-      for (const clip of decodeClips(ev.payload)) current.clips.push(clip);
+      for (const clip of decodeClips(ev.payload)) {
+        if (keepClip(clip)) current.clips.push(clip);
+      }
       continue;
     }
     if (ev.opcode === OP_TIMEMARKER_POSITION && ev.kind === "u32") {
