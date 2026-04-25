@@ -120,11 +120,14 @@ output on all five FL 25 public fixtures.
 | `0x9C` | DWORD (u32 LE) | Tempo | `bpm × 1000` | `120000` → 120.0 BPM. Verified via `cycle.py` sweeps at 100/120/130/145/160 BPM (dev repo's `docs/fl25-event-format.md`). |
 | `0x9F` | DWORD (u32 LE) | FL build number | uint32 | Value `4960` corresponds to FL Studio 25.2.4 build 4960. |
 | `0x62` | WORD (u16 LE) | New mixer effect slot | Slot index (uint16) | Announces a new effect slot within a mixer insert. From the channel walker's perspective, this marks the end of channel-scoped events — subsequent shared-opcode events (e.g., `0xCB` below) belong to the slot's plugin, not to a channel. |
+| `0x63` | WORD (u16 LE) | Arrangement identity marker | Arrangement id (uint16) | Announces a new playlist arrangement. FL 25 base projects have exactly one with id=0. Subsequent arrangement-scoped events (name, track descriptors) belong to the most-recently-announced arrangement. |
 | `0xC1` | DATA (varint + bytes) | Pattern name | Null-terminated UTF-16LE | User-set pattern name (e.g. `"P1"`). Absent for unnamed patterns. Scoped to the pattern id most recently announced by `0x41`. |
 | `0xC4` | DATA (varint + bytes) | Channel sample path | Null-terminated UTF-16LE | Full library path for the current channel's sample, e.g. `"%FLStudioFactoryData%/Data/Patches/Packs/Drums/Kicks/909 Kick.wav\0"`. Absent when the channel has no sample loaded (non-sampler kinds, or samplers before a file is dragged in). Scoped to the channel opened by the most-recent `0x40`. |
 | `0xC7` | DATA (varint + bytes) | FL version (ASCII) | Null-terminated ASCII | `"25.2.4.4960\0"`, 12 bytes on FL 25.2.4. Duplicated by the UTF-16 banner at `0x36` — the two strings serve different consumers. |
 | `0xCB` | DATA (varint + bytes) | Channel/slot name (shared) | Null-terminated UTF-16LE | **Scope-sensitive.** In channel scope (after `0x40`, before any `0x62`) it's the channel name, e.g. `"Sampler"` / `"Kick"` / `"SerumTest"`. In slot scope (after `0x62`) it's the hosted plugin's display name, e.g. `"Fruity Parametric EQ 2"`. Walkers must track the current scope to attribute correctly. |
 | `0xCC` | DATA (varint + bytes) | Mixer insert name | Null-terminated UTF-16LE | User-assigned name of the currently-pending insert (the one being accumulated until the next `0x93`). Absent when the user hasn't renamed the insert (master and default inserts are unnamed). Example: `"Drums"` on `base_one_insert.flp`. Distinct opcode from `0xCB`, so no scope ambiguity. |
+| `0xEE` | DATA (varint + bytes) | Per-track data blob | 70-byte binary blob | Descriptor for one playlist track within the current arrangement. FL 25 emits these in large fixed batches (500 per arrangement on a base project) regardless of whether the tracks carry clips. Count equals the arrangement's track count. Inner structure is TBD — carried as an opaque `Uint8Array` by the skeleton parser. |
+| `0xF1` | DATA (varint + bytes) | Arrangement name | Null-terminated UTF-16LE | User-assigned or default name (`"Arrangement"` on fresh FL 25 saves). Scoped to the arrangement most recently announced by `0x63`. |
 
 ### 3.2 Observed opcodes (parser handles, semantics unverified)
 
@@ -274,15 +277,21 @@ Future additions to this spec should follow the same pattern:
   channel or a mixer slot. Critical on `base_one_insert.flp`,
   where naïve "first 0xCB per channel" would steal the plugin
   name.
-- **2026-04-18** (night) — Added `0x93` (the insert-output event, insert
-  close boundary) and `0xCC` (the insert-name event). First Phase 3.3.3
-  opcodes. Insert walker counts `0x93` to derive the active-insert
-  count (18 on every FL 25 base fixture, matching Python's
-  `flp-info`). `0xCC` attribution is unambiguous — separate opcode
-  from `0xCB` — so insert names don't need the scope machinery
-  that channel/slot names do.
-- **2026-04-18** (late night) — Added `0x41` (the pattern-identity event, the
-  fires-twice identity marker) and `0xC1` (the pattern-name event). First
-  Phase 3.3.2 opcodes. Pattern walker dedups `0x41` by id rather
-  than treating each occurrence as a new entity — critical, since
-  a single pattern always produces two `0x41` events in the stream.
+- **2026-04-18** (night) — Added `0x93` (insert close boundary +
+  output routing) and `0xCC` (insert name). Insert walker counts
+  `0x93` to derive the active-insert count (18 on every FL 25
+  base fixture, matching Python's `flp-info`). `0xCC` attribution
+  is unambiguous — separate opcode from `0xCB` — so insert names
+  don't need the scope machinery that channel/slot names do.
+- **2026-04-18** (late night) — Added `0x41` (pattern identity
+  marker, fires twice per pattern) and `0xC1` (pattern name).
+  Pattern walker dedups `0x41` by id rather than treating each
+  occurrence as a new entity — critical, since a single pattern
+  always produces two `0x41` events in the stream.
+- **2026-04-18** (even later) — Added `0x63` (arrangement identity
+  marker, uint16 id), `0xF1` (arrangement name), and `0xEE`
+  (per-track data blob). Arrangement walker counts `0xEE` events
+  within each arrangement's scope to derive the track count (500
+  on every FL 25 base fixture, matching Python's `flp-info`).
+  Note: `0xEE` is where FL 25 carries per-track data; older FL
+  versions used `0xDE`, which does not appear in FL 25 saves.

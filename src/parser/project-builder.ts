@@ -3,6 +3,7 @@ import { decodeUtf16LeBytes } from "./primitives.ts";
 import { type Channel, classifyChannelKind } from "../model/channel.ts";
 import type { MixerInsert } from "../model/mixer-insert.ts";
 import type { Pattern } from "../model/pattern.ts";
+import type { Arrangement } from "../model/arrangement.ts";
 
 /**
  * Opcode constants for the entity-boundary events. Each is a format fact
@@ -34,6 +35,19 @@ const OP_INSERT_NAME = 0xcc;
 const OP_PATTERN_NEW = 0x41;
 /** Per-pattern name (UTF-16LE null-terminated). */
 const OP_PATTERN_NAME = 0xc1;
+/**
+ * Arrangement identity marker (uint16 LE id). FL 25 base projects
+ * have exactly one, id=0, default name "Arrangement".
+ */
+const OP_ARRANGEMENT_NEW = 0x63;
+/** Arrangement name (UTF-16LE null-terminated). */
+const OP_ARRANGEMENT_NAME = 0xf1;
+/**
+ * Per-track data blob (FL 25's location for the 70-byte per-track
+ * descriptor). FL 25 emits 500 track slots by default even when
+ * most are empty; counting these gives the project's track count.
+ */
+const OP_TRACK_DATA = 0xee;
 
 /**
  * Walks the event stream and accumulates channels.
@@ -157,4 +171,41 @@ export function buildPatterns(events: readonly FLPEvent[]): Pattern[] {
   }
 
   return [...byId.values()];
+}
+
+/**
+ * Walks the event stream and accumulates arrangements.
+ *
+ * Arrangement-identity rule: opcode `0x63` (uint16 LE)
+ * announces a new arrangement with the carried id. Subsequent
+ * arrangement-scoped events (name, track descriptors) belong to the
+ * most-recently-announced arrangement. Each arrangement's `trackCount`
+ * is the number of `0xEE` (per-track data) events that appear between
+ * its `0x63` and the next `0x63`.
+ *
+ * FL 25 base projects emit exactly one `0x63` with id=0, name
+ * "Arrangement", and 500 `0xEE` events.
+ */
+export function buildArrangements(events: readonly FLPEvent[]): Arrangement[] {
+  const arrangements: Arrangement[] = [];
+  let current: Arrangement | undefined;
+
+  for (const ev of events) {
+    if (ev.opcode === OP_ARRANGEMENT_NEW && ev.kind === "u16") {
+      current = { id: ev.value, trackCount: 0 };
+      arrangements.push(current);
+      continue;
+    }
+    if (!current) continue;
+    if (ev.opcode === OP_ARRANGEMENT_NAME && ev.kind === "blob" && current.name === undefined) {
+      current.name = decodeUtf16LeBytes(ev.payload);
+      continue;
+    }
+    if (ev.opcode === OP_TRACK_DATA) {
+      current.trackCount++;
+      continue;
+    }
+  }
+
+  return arrangements;
 }
