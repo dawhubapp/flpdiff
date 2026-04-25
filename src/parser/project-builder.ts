@@ -169,6 +169,20 @@ export function buildChannels(events: readonly FLPEvent[]): Channel[] {
       scope = "slot";
       continue;
     }
+    // Any mixer-section opcode closes channel scope for good. Without
+    // this, on FL 20-era layouts a stray `0xC9` inside the mixer
+    // section — fired 3000+ events after the last `0x40` and before
+    // the first `0x62` — gets misattributed to the final channel as
+    // a phantom plugin.internalName (e.g. "Fruity Parametric EQ 2"),
+    // blocking the sampler-reclassification rule.
+    if (
+      ev.opcode === OP_INSERT_END ||
+      ev.opcode === OP_INSERT_NAME ||
+      ev.opcode === OP_INSERT_FLAGS
+    ) {
+      scope = "outside";
+      continue;
+    }
     if (scope !== "channel" || !current) continue;
 
     if (ev.opcode === OP_CHANNEL_TYPE && ev.kind === "u8") {
