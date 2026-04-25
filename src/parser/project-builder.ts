@@ -1,5 +1,6 @@
 import type { FLPEvent } from "./event.ts";
 import { decodeUtf16LeBytes } from "./primitives.ts";
+import { decodeVSTWrapper } from "./vst-wrapper.ts";
 import { type Channel, classifyChannelKind } from "../model/channel.ts";
 import type { MixerInsert, MixerSlot } from "../model/mixer-insert.ts";
 import type { Pattern } from "../model/pattern.ts";
@@ -17,6 +18,14 @@ const OP_CHANNEL_SAMPLE_PATH = 0xc4;
 /** Plugin internal-class name (UTF-16LE). On a bare sampler channel
  *  FL emits this as an empty string. */
 const OP_PLUGIN_INTERNAL_NAME = 0xc9;
+/**
+ * Plugin state blob. For VST-wrapped plugins
+ * (`internalName === "Fruity Wrapper"`) the payload is the FL
+ * VST-wrapper's id-length-value record stream containing the VST's
+ * display name, vendor, path, etc. — decoded via `decodeVSTWrapper`.
+ * For native plugins it's plugin-specific state (opaque to us for now).
+ */
+const OP_PLUGIN_STATE = 0xd5;
 /** Shared name opcode. In a channel scope it's the channel name; in a
  *  mixer-slot scope it's the plugin name. Scope tracked via OP_NEW_SLOT. */
 const OP_NAME = 0xcb;
@@ -99,6 +108,18 @@ export function buildChannels(events: readonly FLPEvent[]): Channel[] {
       // Sampler channels emit an empty 0xC9 as a placeholder; treat
       // that as "no plugin" so the field stays undefined.
       if (internalName.length > 0) current.plugin = { internalName };
+      continue;
+    }
+    if (
+      ev.opcode === OP_PLUGIN_STATE &&
+      ev.kind === "blob" &&
+      current.plugin !== undefined &&
+      current.plugin.internalName === "Fruity Wrapper" &&
+      current.plugin.name === undefined
+    ) {
+      const info = decodeVSTWrapper(ev.payload);
+      if (info.name !== undefined) current.plugin.name = info.name;
+      if (info.vendor !== undefined) current.plugin.vendor = info.vendor;
       continue;
     }
     if (ev.opcode === OP_NAME && ev.kind === "blob" && current.name === undefined) {

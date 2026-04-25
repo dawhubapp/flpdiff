@@ -156,12 +156,17 @@ describe("Channel-hosted plugin (opcode 0xC9)", () => {
     }
   });
 
-  test("base_one_serum.flp: channel[1] hosts 'Fruity Wrapper'", async () => {
+  test("base_one_serum.flp: channel[1] hosts Serum via Fruity Wrapper, with vendor", async () => {
     const channels = await channelsOf("base_one_serum.flp");
     // Channel 0 is the default sampler — no plugin
     expect(channels[0]!.plugin).toBeUndefined();
-    // Channel 1 is Serum — wrapped by FL's generic VST wrapper
-    expect(channels[1]!.plugin).toEqual({ internalName: "Fruity Wrapper" });
+    // Channel 1 is Serum — VST wrapper decoded to expose the real
+    // VST name and vendor from the 0xD5 state blob.
+    expect(channels[1]!.plugin).toEqual({
+      internalName: "Fruity Wrapper",
+      name: "Serum",
+      vendor: "Xfer Records",
+    });
   });
 });
 

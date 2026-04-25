@@ -26,7 +26,7 @@ export type ChannelSummary = {
   kind: "sampler" | "instrument" | "layer" | "automation" | "unknown";
   name?: string;
   sample_path?: string;
-  plugin?: { internalName: string };
+  plugin?: { internalName: string; name?: string; vendor?: string };
 };
 
 export type SlotSummary = {
@@ -70,7 +70,11 @@ function pickChannel(ch: FLPProject["channels"][number]): ChannelSummary {
   const out: ChannelSummary = { iid: ch.iid, kind: ch.kind };
   if (ch.name !== undefined) out.name = ch.name;
   if (ch.sample_path !== undefined) out.sample_path = ch.sample_path;
-  if (ch.plugin !== undefined) out.plugin = { internalName: ch.plugin.internalName };
+  if (ch.plugin !== undefined) {
+    out.plugin = { internalName: ch.plugin.internalName };
+    if (ch.plugin.name !== undefined) out.plugin.name = ch.plugin.name;
+    if (ch.plugin.vendor !== undefined) out.plugin.vendor = ch.plugin.vendor;
+  }
   return out;
 }
 

@@ -19,17 +19,25 @@
 export type ChannelKind = "sampler" | "instrument" | "layer" | "automation" | "unknown";
 
 /**
- * Plugin hosted on a channel. Skeleton level: only the internal-name
- * string from opcode `0xC9` (the plugin internal-name event).
+ * Plugin hosted on a channel.
  *
- * For FL-native plugins `internalName` equals the plugin's display name
- * (e.g. `"Fruity Parametric EQ 2"`). For VST-hosted plugins it's
- * `"Fruity Wrapper"` (the FL wrapper class), with the real VST name
- * (`"Serum"`, etc.) living inside the `0xD5` plugin-state blob — full
- * extraction is deferred to a VST-decoder follow-up.
+ * `internalName` is always set — it's FL's identifier for the plugin's
+ * wrapper class, sourced from opcode `0xC9`. For FL-native plugins it
+ * equals the plugin's display name (e.g. `"Fruity Parametric EQ 2"`).
+ * For VST-hosted plugins it's `"Fruity Wrapper"` (FL's generic VST
+ * host class).
+ *
+ * `name` and `vendor` are populated ONLY when the plugin is a VST
+ * (internalName === `"Fruity Wrapper"`) — decoded from the `0xD5`
+ * plugin-state blob's id-length-value record stream. See
+ * `parser/vst-wrapper.ts`.
  */
 export type ChannelPlugin = {
   internalName: string;
+  /** VST display name (e.g. `"Serum"`). Set only for VST plugins. */
+  name?: string;
+  /** VST vendor string (e.g. `"Xfer Records"`). Set only for VSTs. */
+  vendor?: string;
 };
 
 export type Channel = {

@@ -104,7 +104,11 @@ const ORACLE: Record<string, ProjectSummary> = {
         iid: 1,
         kind: "instrument",
         name: "SerumTest",
-        plugin: { internalName: "Fruity Wrapper" },
+        plugin: {
+          internalName: "Fruity Wrapper",
+          name: "Serum",
+          vendor: "Xfer Records",
+        },
       },
     ],
     inserts: DEFAULT_INSERTS,
