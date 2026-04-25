@@ -157,6 +157,16 @@ export function buildChannels(events: readonly FLPEvent[]): Channel[] {
    * channel-scoped events are attributed to `current`.
    */
   let scope: "outside" | "channel" | "slot" = "outside";
+  /**
+   * Tracks, per channel iid, whether a channel-level `0xC9`
+   * plugin-internal-name event fired — regardless of its payload
+   * value. The sampler-reclassification rule below requires the
+   * event to be PRESENT (even if empty); pre-FL-12 layouts often
+   * skip `0xC9` on certain channel types and TS was happily
+   * flipping those to sampler when the reference left them as
+   * instrument.
+   */
+  const sawPluginEvent = new Set<number>();
 
   for (const ev of events) {
     if (ev.opcode === OP_NEW_CHANNEL && ev.kind === "u16") {
@@ -215,6 +225,7 @@ export function buildChannels(events: readonly FLPEvent[]): Channel[] {
       continue;
     }
     if (ev.opcode === OP_PLUGIN_INTERNAL_NAME && ev.kind === "blob" && current.plugin === undefined) {
+      sawPluginEvent.add(current.iid);
       const internalName = decodeUtf16LeBytes(ev.payload);
       // Sampler channels emit an empty 0xC9 as a placeholder; treat
       // that as "no plugin" so the field stays undefined.
@@ -242,14 +253,21 @@ export function buildChannels(events: readonly FLPEvent[]): Channel[] {
     // by buildMixerInserts.
   }
 
-  // Reference-parser rule: `channel-type enum == Instrument (4)` is FL's placeholder for
-  // "audio clip slot before a sample is loaded" as well as for real VST
-  // instrument channels. When the channel also has a SamplePath and no
-  // plugin (empty channel-level 0xC9), the reference parser reclassifies it as Sampler.
-  // Mirror that here so channel_kinds counts match Python on real
-  // corpora. See `the reference parser/channel.py::the channel iterator`.
+  // FL writes `channel-type enum == Instrument (4)` as a placeholder for
+  // "audio clip slot before a sample is loaded" as well as for real
+  // VST instrument channels. When the channel also has a sample
+  // path AND a channel-level `0xC9` plugin-internal-name event
+  // (even if empty-valued), reclassify as Sampler — that matches
+  // the reference parser's behaviour. The `sawPluginEvent` check
+  // matters on pre-FL-12 files where some instrument channels don't
+  // emit `0xC9` at all — without it TS would flip them wrongly.
   for (const ch of channels) {
-    if (ch.kind === "instrument" && ch.sample_path !== undefined && ch.plugin === undefined) {
+    if (
+      ch.kind === "instrument" &&
+      ch.sample_path !== undefined &&
+      sawPluginEvent.has(ch.iid) &&
+      ch.plugin === undefined
+    ) {
       ch.kind = "sampler";
     }
   }
