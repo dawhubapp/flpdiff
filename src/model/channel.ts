@@ -18,6 +18,20 @@
  */
 export type ChannelKind = "sampler" | "instrument" | "layer" | "automation" | "unknown";
 
+/**
+ * Plugin hosted on a channel. Skeleton level: only the internal-name
+ * string from opcode `0xC9` (the plugin internal-name event).
+ *
+ * For FL-native plugins `internalName` equals the plugin's display name
+ * (e.g. `"Fruity Parametric EQ 2"`). For VST-hosted plugins it's
+ * `"Fruity Wrapper"` (the FL wrapper class), with the real VST name
+ * (`"Serum"`, etc.) living inside the `0xD5` plugin-state blob — full
+ * extraction is deferred to a VST-decoder follow-up.
+ */
+export type ChannelPlugin = {
+  internalName: string;
+};
+
 export type Channel = {
   /** Stable FL-assigned channel index from opcode 0x40. */
   iid: number;
@@ -39,6 +53,12 @@ export type Channel = {
    * samplers before a file is dragged in).
    */
   sample_path?: string;
+  /**
+   * Plugin hosted on this channel. Set only for channels that actually
+   * have a plugin loaded — sampler channels emit an empty `0xC9`, which
+   * the walker treats as "no plugin" and leaves this field undefined.
+   */
+  plugin?: ChannelPlugin;
 };
 
 /**

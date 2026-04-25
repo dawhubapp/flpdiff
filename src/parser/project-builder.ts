@@ -14,6 +14,9 @@ import type { Arrangement } from "../model/arrangement.ts";
 const OP_NEW_CHANNEL = 0x40;
 const OP_CHANNEL_TYPE = 0x15;
 const OP_CHANNEL_SAMPLE_PATH = 0xc4;
+/** Plugin internal-class name (UTF-16LE). On a bare sampler channel
+ *  FL emits this as an empty string. */
+const OP_PLUGIN_INTERNAL_NAME = 0xc9;
 /** Shared name opcode. In a channel scope it's the channel name; in a
  *  mixer-slot scope it's the plugin name. Scope tracked via OP_NEW_SLOT. */
 const OP_NAME = 0xcb;
@@ -89,6 +92,13 @@ export function buildChannels(events: readonly FLPEvent[]): Channel[] {
     }
     if (ev.opcode === OP_CHANNEL_SAMPLE_PATH && ev.kind === "blob") {
       current.sample_path = decodeUtf16LeBytes(ev.payload);
+      continue;
+    }
+    if (ev.opcode === OP_PLUGIN_INTERNAL_NAME && ev.kind === "blob" && current.plugin === undefined) {
+      const internalName = decodeUtf16LeBytes(ev.payload);
+      // Sampler channels emit an empty 0xC9 as a placeholder; treat
+      // that as "no plugin" so the field stays undefined.
+      if (internalName.length > 0) current.plugin = { internalName };
       continue;
     }
     if (ev.opcode === OP_NAME && ev.kind === "blob" && current.name === undefined) {

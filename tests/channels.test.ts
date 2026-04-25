@@ -143,6 +143,28 @@ describe("sampleFilename — pure path helper", () => {
   });
 });
 
+describe("Channel-hosted plugin (opcode 0xC9)", () => {
+  test.each([
+    ["base_empty.flp"],
+    ["base_one_channel.flp"],
+    ["base_one_insert.flp"],
+    ["base_one_pattern.flp"],
+  ])("%s: sampler-only channels have no plugin", async (name) => {
+    const channels = await channelsOf(name);
+    for (const ch of channels) {
+      expect(ch.plugin).toBeUndefined();
+    }
+  });
+
+  test("base_one_serum.flp: channel[1] hosts 'Fruity Wrapper'", async () => {
+    const channels = await channelsOf("base_one_serum.flp");
+    // Channel 0 is the default sampler — no plugin
+    expect(channels[0]!.plugin).toBeUndefined();
+    // Channel 1 is Serum — wrapped by FL's generic VST wrapper
+    expect(channels[1]!.plugin).toEqual({ internalName: "Fruity Wrapper" });
+  });
+});
+
 describe("channel iids are contiguous and sequential", () => {
   test.each([
     "base_empty.flp",
