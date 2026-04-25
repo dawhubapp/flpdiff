@@ -5,9 +5,13 @@
   "type": "module",
   "private": true,
   "module": "src/index.ts",
+  "bin": {
+    "flpdiff-ts": "src/cli.ts"
+  },
   "scripts": {
     "test": "bun test",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "cli": "bun run src/cli.ts"
   },
   "devDependencies": {
     "@types/bun": "latest"

@@ -22,13 +22,13 @@ const ORACLE = {
   ppq: 96,
 };
 
-const FIXTURES = [
+const FIXTURES: string[] = [
   "base_empty.flp",
   "base_one_channel.flp",
   "base_one_insert.flp",
   "base_one_pattern.flp",
   "base_one_serum.flp",
-] as const;
+];
 
 describe("FL 25 public corpus — headline parity", () => {
   test.each(FIXTURES)("parses %s and matches Python flp-info headline", async (name) => {
