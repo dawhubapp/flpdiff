@@ -119,7 +119,7 @@ output on all five FL 25 public fixtures.
 | `0x93` | DWORD (u32 LE) | Mixer insert boundary (close) | Ignored | Closes the currently-being-built mixer insert. Unlike `0x40` which *opens* a channel, `0x93` *ends* an insert — events prior to each `0x93` belong to that insert. The count of `0x93` events equals the project's active-insert count (18 on a freshly-saved FL 25 base). |
 | `0x9C` | DWORD (u32 LE) | Tempo | `bpm × 1000` | `120000` → 120.0 BPM. Verified via `cycle.py` sweeps at 100/120/130/145/160 BPM (dev repo's `docs/fl25-event-format.md`). |
 | `0x9F` | DWORD (u32 LE) | FL build number | uint32 | Value `4960` corresponds to FL Studio 25.2.4 build 4960. |
-| `0x62` | WORD (u16 LE) | New mixer effect slot | Slot index (uint16) | Announces a new effect slot within a mixer insert. From the channel walker's perspective, this marks the end of channel-scoped events — subsequent shared-opcode events (e.g., `0xCB` below) belong to the slot's plugin, not to a channel. |
+| `0x62` | WORD (u16 LE) | Mixer effect slot boundary (close) | Slot index (uint16) | **Closes** the current slot's accumulation — events for slot K (plugin name, wrapper, state) fire BEFORE the `0x62` that carries value K. Always emitted in groups of 10 per insert (slots 0..9), even for empty slots. For the channel walker, any `0x62` marks the end of channel-scoped events and the start of mixer section. |
 | `0x63` | WORD (u16 LE) | Arrangement identity marker | Arrangement id (uint16) | Announces a new playlist arrangement. FL 25 base projects have exactly one with id=0. Subsequent arrangement-scoped events (name, track descriptors) belong to the most-recently-announced arrangement. |
 | `0xC1` | DATA (varint + bytes) | Pattern name | Null-terminated UTF-16LE | User-set pattern name (e.g. `"P1"`). Absent for unnamed patterns. Scoped to the pattern id most recently announced by `0x41`. |
 | `0xC4` | DATA (varint + bytes) | Channel sample path | Null-terminated UTF-16LE | Full library path for the current channel's sample, e.g. `"%FLStudioFactoryData%/Data/Patches/Packs/Drums/Kicks/909 Kick.wav\0"`. Absent when the channel has no sample loaded (non-sampler kinds, or samplers before a file is dragged in). Scoped to the channel opened by the most-recent `0x40`. |
@@ -295,3 +295,10 @@ Future additions to this spec should follow the same pattern:
   on every FL 25 base fixture, matching Python's `flp-info`).
   Note: `0xEE` is where FL 25 carries per-track data; older FL
   versions used `0xDE`, which does not appear in FL 25 saves.
+- **2026-04-19** — Phase 3.3.5 mixer-slot plugin metadata. Revised
+  the `0x62` semantics: it's a slot CLOSER, not an opener. Plugin
+  events (0xCB display name, 0xD5 state, etc.) fire BEFORE the
+  `0x62` that carries that slot's index. FL emits 10 × `0x62` per
+  insert (slots 0..9), even for empty slots. Mixer walker now
+  accumulates a `pendingSlot` and pushes it to the insert's
+  slots[] on each `0x62`, using the `0x62` value as the slot index.

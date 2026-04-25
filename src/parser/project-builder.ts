@@ -1,7 +1,7 @@
 import type { FLPEvent } from "./event.ts";
 import { decodeUtf16LeBytes } from "./primitives.ts";
 import { type Channel, classifyChannelKind } from "../model/channel.ts";
-import type { MixerInsert } from "../model/mixer-insert.ts";
+import type { MixerInsert, MixerSlot } from "../model/mixer-insert.ts";
 import type { Pattern } from "../model/pattern.ts";
 import type { Arrangement } from "../model/arrangement.ts";
 
@@ -120,16 +120,57 @@ export function buildChannels(events: readonly FLPEvent[]): Channel[] {
  */
 export function buildMixerInserts(events: readonly FLPEvent[]): MixerInsert[] {
   const inserts: MixerInsert[] = [];
-  let pending: MixerInsert = { index: 0 };
+  let pendingInsert: MixerInsert = { index: 0, slots: [] };
+  /**
+   * Slot currently being *accumulated*. Unlike `pendingInsert`, this is
+   * pre-open: events destined for slot K accumulate into `pendingSlot`
+   * until the 0x62 event that carries K closes it and pushes to
+   * `pendingInsert.slots`.
+   *
+   * Why this shape: FL writes a slot's plugin-identifying events (0xCB
+   * plugin name, 0xD5 plugin state, etc.) BEFORE the 0x62 marker that
+   * names the slot. So 0x62 is the slot CLOSER, not an opener.
+   */
+  let pendingSlot: MixerSlot = { index: 0 };
+  /**
+   * True once we've seen any insert-section marker — 0x62 (slot close),
+   * 0x93 (insert close), or 0xCC (insert name). Before this point, the
+   * walker is still in the channel section of the stream and must not
+   * attribute shared opcodes (0xCB) to slots. The channel walker
+   * handles those in its own scope.
+   */
+  let inMixerSection = false;
 
   for (const ev of events) {
     if (ev.opcode === OP_INSERT_END) {
-      inserts.push(pending);
-      pending = { index: inserts.length };
+      inMixerSection = true;
+      // pendingSlot at this point holds any trailing insert-level
+      // events (routing etc.) that fire after the last 0x62 — drop
+      // those; they don't belong to any slot.
+      inserts.push(pendingInsert);
+      pendingInsert = { index: inserts.length, slots: [] };
+      pendingSlot = { index: 0 };
       continue;
     }
-    if (ev.opcode === OP_INSERT_NAME && ev.kind === "blob" && pending.name === undefined) {
-      pending.name = decodeUtf16LeBytes(ev.payload);
+    if (ev.opcode === OP_NEW_SLOT && ev.kind === "u16") {
+      inMixerSection = true;
+      pendingSlot.index = ev.value;
+      pendingInsert.slots.push(pendingSlot);
+      pendingSlot = { index: ev.value + 1 };
+      continue;
+    }
+    if (ev.opcode === OP_INSERT_NAME && ev.kind === "blob" && pendingInsert.name === undefined) {
+      inMixerSection = true;
+      pendingInsert.name = decodeUtf16LeBytes(ev.payload);
+      continue;
+    }
+    if (
+      ev.opcode === OP_NAME &&
+      ev.kind === "blob" &&
+      inMixerSection &&
+      pendingSlot.pluginName === undefined
+    ) {
+      pendingSlot.pluginName = decodeUtf16LeBytes(ev.payload);
       continue;
     }
   }
