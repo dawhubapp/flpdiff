@@ -3,7 +3,7 @@ import { decodeUtf16LeBytes } from "./primitives.ts";
 import { decodeVSTWrapper } from "./vst-wrapper.ts";
 import { type Channel, classifyChannelKind, unpackRGBA, decodeLevels } from "../model/channel.ts";
 // unpackRGBA is re-used for pattern color (0x96) — same byte packing as 0x80.
-import type { MixerInsert, MixerSlot } from "../model/mixer-insert.ts";
+import { type MixerInsert, type MixerSlot, decodeInsertFlags } from "../model/mixer-insert.ts";
 import { type Pattern, decodeNotes } from "../model/pattern.ts";
 import { type Arrangement, decodeClips } from "../model/arrangement.ts";
 
@@ -60,6 +60,13 @@ const OP_INSERT_COLOR = 0x95;
 const OP_INSERT_ICON = 0x5f;
 /** Insert audio input source (int32 LE, -1 sentinel). */
 const OP_INSERT_INPUT = 0x9a;
+/**
+ * Insert flags bitmask blob. FL 25 relocated this opcode from the
+ * pre-FL-25 `0xDC` to `0xEC`, matching the same +16 offset seen
+ * with track data and pattern notes. 12-byte payload:
+ * 4 reserved + uint32 flags + 4 reserved.
+ */
+const OP_INSERT_FLAGS = 0xec;
 /** Int32 value indicating "no explicit routing" — stored as 0xFFFFFFFF (-1 signed). */
 const ROUTING_UNSET = 0xffffffff;
 /**
@@ -268,6 +275,12 @@ export function buildMixerInserts(events: readonly FLPEvent[]): MixerInsert[] {
     }
     if (ev.opcode === OP_INSERT_INPUT && ev.kind === "u32" && pendingInsert.input === undefined && inMixerSection) {
       if (ev.value !== ROUTING_UNSET) pendingInsert.input = ev.value;
+      continue;
+    }
+    if (ev.opcode === OP_INSERT_FLAGS && ev.kind === "blob" && pendingInsert.flags === undefined) {
+      inMixerSection = true;
+      const flags = decodeInsertFlags(ev.payload);
+      if (flags !== undefined) pendingInsert.flags = flags;
       continue;
     }
     if (

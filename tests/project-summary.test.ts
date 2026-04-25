@@ -41,10 +41,29 @@ const DEFAULT_LEVELS = {
   filter_type: 0,
 };
 
+// FL 25's default flag bitmask. Master (insert 0) and the "current"
+// insert (insert 17) both use `enableEffects + enabled` (0x0C).
+// Inserts 1..16 additionally set `dockMiddle` (0x4C).
+const BASE_FLAGS = {
+  polarityReversed: false,
+  swapLeftRight: false,
+  enableEffects: true,
+  enabled: true,
+  disableThreadedProcessing: false,
+  dockMiddle: false,
+  dockRight: false,
+  separatorShown: false,
+  locked: false,
+  solo: false,
+  audioTrack: false,
+};
+const MIDDLE_DOCKED_FLAGS = { ...BASE_FLAGS, dockMiddle: true };
+
 // Every FL 25 base project we have emits 18 empty inserts (master + 17).
 // Each insert carries 10 empty slots with indices 0..9.
 const DEFAULT_INSERTS: InsertSummary[] = Array.from({ length: 18 }, (_, i) => ({
   index: i,
+  flags: i === 0 || i === 17 ? BASE_FLAGS : MIDDLE_DOCKED_FLAGS,
   slots: Array.from({ length: 10 }, (__, j) => ({ index: j })),
 }));
 
@@ -95,6 +114,7 @@ const ORACLE: Record<string, ProjectSummary> = {
         ? {
             index: 1,
             name: "Drums",
+            flags: MIDDLE_DOCKED_FLAGS,
             slots: [
               { index: 0, pluginName: "Fruity Parametric EQ 2" },
               ...ins.slots.slice(1),

@@ -1,6 +1,7 @@
 import type { FLPProject } from "./parser/flp-project.ts";
 import { getTempo } from "./parser/flp-project.ts";
 import type { RGBA, Levels } from "./model/channel.ts";
+import type { InsertFlags } from "./model/mixer-insert.ts";
 import type { Note } from "./model/pattern.ts";
 import type { Clip } from "./model/arrangement.ts";
 
@@ -46,6 +47,7 @@ export type InsertSummary = {
   icon?: number;
   output?: number;
   input?: number;
+  flags?: InsertFlags;
   slots: SlotSummary[];
 };
 
@@ -108,6 +110,7 @@ function pickInsert(ins: FLPProject["inserts"][number]): InsertSummary {
   if (ins.icon !== undefined) out.icon = ins.icon;
   if (ins.output !== undefined) out.output = ins.output;
   if (ins.input !== undefined) out.input = ins.input;
+  if (ins.flags !== undefined) out.flags = { ...ins.flags };
   return out;
 }
 

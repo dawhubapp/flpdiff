@@ -14,6 +14,49 @@ export type MixerSlot = {
 };
 
 /**
+ * Insert-level bitmask flags, decoded from the uint32 at byte offset 4
+ * of the `0xEC` insert-flags blob. (FL 25 relocated this opcode from
+ * the pre-FL-25 `0xDC` to `0xEC`, matching the general FL 25 "DATA
+ * range +16" relocation pattern.)
+ *
+ * FL 25's default inserts report `enableEffects + enabled` (= 0x0C);
+ * numbered inserts additionally set `dockMiddle` (→ 0x4C).
+ */
+export type InsertFlags = {
+  polarityReversed: boolean;
+  swapLeftRight: boolean;
+  enableEffects: boolean;
+  enabled: boolean;
+  disableThreadedProcessing: boolean;
+  dockMiddle: boolean;
+  dockRight: boolean;
+  separatorShown: boolean;
+  locked: boolean;
+  solo: boolean;
+  /** True when the insert is linked to an audio track. */
+  audioTrack: boolean;
+};
+
+export function decodeInsertFlags(payload: Uint8Array): InsertFlags | undefined {
+  if (payload.byteLength < 12) return undefined;
+  const view = new DataView(payload.buffer, payload.byteOffset, payload.byteLength);
+  const raw = view.getUint32(4, true);
+  return {
+    polarityReversed: (raw & (1 << 0)) !== 0,
+    swapLeftRight: (raw & (1 << 1)) !== 0,
+    enableEffects: (raw & (1 << 2)) !== 0,
+    enabled: (raw & (1 << 3)) !== 0,
+    disableThreadedProcessing: (raw & (1 << 4)) !== 0,
+    dockMiddle: (raw & (1 << 6)) !== 0,
+    dockRight: (raw & (1 << 7)) !== 0,
+    separatorShown: (raw & (1 << 10)) !== 0,
+    locked: (raw & (1 << 11)) !== 0,
+    solo: (raw & (1 << 12)) !== 0,
+    audioTrack: (raw & (1 << 15)) !== 0,
+  };
+}
+
+/**
  * A mixer insert (also called an "FX channel"). FL 25 projects always
  * have a fixed number of inserts — 18 active ones on a freshly-saved
  * base project (1 master + 17 numbered inserts), plus a large tail of
@@ -60,6 +103,12 @@ export type MixerInsert = {
    * when FL emits the `-1` sentinel.
    */
   input?: number;
+  /**
+   * Insert-level bitmask flags (bypass / swap / enabled / docking / etc.).
+   * Sourced from the 12-byte `0xEC` insert-flags blob. Present on
+   * every insert in FL 25's default save output.
+   */
+  flags?: InsertFlags;
   /**
    * Effect slots on this insert, in declaration order. FL 25 always
    * emits 10 slots per insert; empty slots have `pluginName === undefined`.
