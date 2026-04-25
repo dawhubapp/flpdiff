@@ -11,7 +11,11 @@ meaningful diffs but no matching/comparator code has been written yet.
 **Current state:** 155 tests green, 3934 assertions, tsc clean, on
 TypeScript 6 + Bun 1.3.9 + typed-binary 4.3.3. All 5 committed FL 25
 public fixtures deep-equal match a hand-crafted oracle via
-`buildProjectSummary(project)`.
+`buildProjectSummary(project)`. Python ↔ TS parity harness (see
+`tools/parity/`) matches **41 / 85** local corpus files on Pass 1
+(counts-and-kinds shape); remaining 44 files show the same
+`filled_slots` drift driven by a the reference parser internal plugin-type
+dispatch — not a TS bug, documented below.
 
 This repo is a nested git repo alongside the main Python `flpdiff`
 codebase. It exists to explore two asymmetric wins that Python cannot
@@ -49,6 +53,11 @@ any production commitment is made. See the spec
   `0xE0` (pattern notes from `0xD0`), `0xDB` (channel Levels from
   `0xCB`/`0xCF` overload), and `0xEC` (insert flags from `0xDC`). All
   four fit the same `DATA + 16` offset pattern.
+- **Parity-harness-driven corrections.** Running the Pass 1 parity
+  harness (`tools/parity/run_parity.py`) against the 85-file local
+  corpus caught three opcode mis-readings that the 5 public fixtures
+  never exercised, plus a handful of walker-scope and legacy-layout
+  bugs — see the "Parity harness" section below.
 - **Bun** is the runtime and test runner. **typed-binary** handles TLV
   event parsing via three custom `Schema<T>` subclasses.
 
@@ -92,7 +101,7 @@ opcode is present):
 | Entity      | Fields |
 |-------------|--------|
 | Channel     | iid, kind, name, sample_path, plugin (internalName/name/vendor), color (RGBA), levels (pan/volume/pitch_shift/filter_mod_x/y/type), enabled, pingPongLoop, locked |
-| MixerInsert | index, name, color, icon, output, input, flags (11 named booleans), slots (10 per insert, each with index + pluginName) |
+| MixerInsert | index, name, color, icon, output, input, flags (11 named booleans), slots (10 per insert, each with index + pluginName + hasPlugin) |
 | Pattern     | id, name, length, color, looped, notes (13-field records), controllers |
 | Arrangement | id, name, trackCount, clips, timemarkers (marker or signature kind) |
 
@@ -129,6 +138,12 @@ ts/
 │   │   └── project-builder.ts   # buildChannels/buildMixerInserts/buildPatterns/buildArrangements
 │   └── diff/
 │       └── headline.ts          # pure diffHeadlines + renderHeadlineDiff
+├── tools/
+│   └── parity/                  # Python ↔ TS parser parity harness
+│       ├── py_snapshot.py       # in-process Python snapshot
+│       ├── ts-snapshot.ts       # bun-executed TS snapshot
+│       ├── run_parity.py        # stratified runner + deep-equal
+│       └── classify_versions.py # FL-major stratification helper
 └── tests/
     ├── smoke.test.ts            # 5-fixture parametric header+tempo+version
     ├── cli.test.ts              # CLI + pure diff logic
@@ -151,34 +166,88 @@ ts/
 | 3.5   | Browser viewer                                      | 🔲 |
 | 3.6   | Go/no-go gate                                       | 🔲 |
 
+## Parity harness (`tools/parity/`)
+
+Pass 1 cross-parser check: serialise both Python and TS parsers'
+output of the same file to a compact counts-and-kinds snapshot
+(PPQ, tempo, channel counts by kind, pattern / note / controller
+totals, insert / slot / track / clip / marker totals), then deep-
+compare. Results stratified by FL major version.
+
+```sh
+.venv/bin/python ts/tools/parity/run_parity.py tests/corpus/local
+```
+
+Current sweep: **41 / 85** MATCH. The harness run turned up and
+we fixed:
+
+| # | Bug                                                                                             | Impact                                   |
+|---|-------------------------------------------------------------------------------------------------|------------------------------------------|
+| 1 | Playlist opcode `0xD9 → 0xE9` (the reference parser canonical `DATA+25`)                                       | `clips_total=0` on every FL 21+ file    |
+| 2 | Orphan-clip filter (`track_rvidx > 499` or missing channel/pattern ref)                          | Clip over-count by ~3× on real files    |
+| 3 | Sampler reclassification — `type=Instrument + SamplePath + empty 0xC9 → Sampler` per the reference parser rule  | Channel kinds off by 3–5× on real files |
+| 4 | `hasPlugin` signal on mixer slots (key off 0xD5, not 0xCB)                                      | `filled_slots` undercount by 60–70%     |
+| 5 | Legacy tempo fallback (`0x42` coarse + `0x5D` fine)                                             | Every FL 9/11 file showed `tempo: None` |
+| 6 | UTF-16LE 1-byte payloads → "" (FL 9 emits single-null placeholders)                             | 105 "named inserts" on every FL 9 file  |
+| 7 | Controllers opcode `0xCF → 0xDF`                                                                 | Controllers never fired (3261 missed)   |
+| 8 | FL 9 1-slot-per-insert layout (no 0x62 markers → push at 0x93)                                  | `filled_slots=0` on 4 FL 9 files        |
+| 9 | Channel scope exits on mixer-section opcodes (`0x93` / `0xCC` / `0xEC`)                         | Phantom plugin names bleeding from mixer |
+| 10| Stricter reclassification (require 0xC9 event present, not just "plugin undefined")             | Over-flipping on pre-FL-12 layouts      |
+
+Per-version match after all ten fixes:
+
+```
+FL 9   14/14  ✅
+FL 11   2/2   ✅
+FL 12   0/1
+FL 20  18/32
+FL 21   4/16
+FL 24   3/12
+FL 25   0/8
+```
+
 ## Known open format work
 
-1. **MixerParams sparse-insert-idx mapping** — `0xE1` records use
+1. **`filled_slots` drift — 44 files.** TS consistently OVER-counts
+   Python by ~20%. Cause: the reference parser's `PluginProp.__get__` dispatches
+   through a hard-coded list of 10 plugin types (VSTPlugin + 9 Fruity
+   natives); slots whose typed `0xD5` event matches a plugin class
+   NOT on that list fall through to `None` and get dropped from
+   `slot.plugin is not None`. Our `hasPlugin` count is arguably
+   more correct — it reports every slot with any plugin state. Only
+   matters if Phase 3.4 needs byte-for-byte `slot.plugin` parity.
+2. **MixerParams sparse-insert-idx mapping** — `0xE1` records use
    indices like `0, 53, 64..80` that don't map 1:1 to visible insert
    indices 0..17. Raw decoder ships (`decodeMixerParams`); attribution
    to `MixerInsert.slots[].enabled/mix` awaits mapping work.
-2. **Muted channel state** — Python reports `muted: false` on every
+3. **Muted channel state** — Python reports `muted: false` on every
    channel; source opcode not yet located (possibly inside Levels or a
    flag we haven't decoded).
-3. **Channel IsZipped (`0x0F`)** — opcode known from the reference parser, no fixture
+4. **Channel IsZipped (`0x0F`)** — opcode known from the reference parser, no fixture
    has a zipped channel so no end-to-end path yet.
-4. **Note flags bitmask** — each Note carries `flags: number` raw; bit
+5. **Note flags bitmask** — each Note carries `flags: number` raw; bit
    positions (Slide = `1<<3`, etc.) not yet decoded as named booleans.
-5. **Clip-bearing fixtures** — no committed fixture emits `0xE9`
+6. **Clip-bearing fixtures** — no committed fixture emits `0xE9`
    playlist clips or `0x94` time-markers; decoders are unit-tested via
    crafted payloads and will activate automatically when a fixture
    exercises them.
 
 ## For the next session
 
-Two natural paths:
+Three natural paths:
 
-1. **Start Phase 3.4** (diff engine port). The parser has enough entity
-   metadata for meaningful diffs: tempo, version, channel
-   names/plugins/volume/color, pattern notes, insert routing, etc.
-   Port Python's matcher + comparator + summary formatter from
-   `src/flp_diff/`. Four sub-phases per SPEC.
-2. **Keep deepening Phase 3.3** — pick from the open-format list
-   above. Each is ~1 commit of similar shape to recent work.
+1. **Keep closing parity drift.** 44 files remain (FL 20-25). The
+   dominant remaining drift is `filled_slots`, which is a the reference parser
+   quirk — we can match it by shipping a blacklist of plugin
+   internal-names whose typed events the reference parser drops at the `Slot.plugin`
+   property (BooBass, FruitKick, Plucked). Cheap; would push parity
+   from 41/85 toward 80+/85.
+2. **Start Phase 3.4** (diff engine port). Parser coverage is
+   robust — 41/85 real-corpus structural parity plus 5/5 public
+   oracle is a reasonable foundation. Port Python's matcher +
+   comparator + summary formatter from `src/flp_diff/`.
+3. **Keep deepening Phase 3.3** — items 2-6 in the "Known open
+   format work" list above (channel muted, note flag decoding,
+   etc.). Each is ~1 commit of similar shape to recent work.
 
-Roman has indicated Phase 3.4 waits for explicit confirmation.
+Roman's been explicit that Phase 3.4 waits for confirmation.

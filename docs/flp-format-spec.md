@@ -127,10 +127,12 @@ output on all five FL 25 public fixtures.
 | `0x95` | DWORD (u32 LE) | Insert color | RGBA packed LE | Same byte packing as `0x80`. Absent unless user set a color on this insert. |
 | `0x9A` | DWORD (u32 LE) | Insert audio input source | int32 | Same `-1` default-sentinel semantics as `0x93`. |
 | `0x80` | DWORD (u32 LE) | Plugin/channel color | RGBA packed LE | Low byte is R, then G, B, A — reading as uint32 LE and extracting bytes via `value & 0xFF`, `(value >> 8) & 0xFF`, etc. FL's default channel color is `0x00484541` → `{r: 65, g: 69, b: 72, a: 0}`. Shared between channels and mixer-slot plugins; scope gating (channel vs slot) keeps attribution clean. |
-| `0x96` | DWORD (u32 LE) | Pattern color | RGBA packed LE | the pattern-color event. Same byte packing as `0x80`. Only emitted when the user has touched the pattern's color — otherwise absent. |
-| `0x1A` | BYTE (u8) | Pattern looped flag | bool (0/1) | the pattern-looped event. FL only emits this opcode when the pattern is actually looped; an unlooped pattern gets no event and consumers must default to `false`. |
-| `0xA4` | DWORD (u32 LE) | Pattern length | PPQ ticks | the pattern-length event. Value `0` means "use the project's default bar length" — FL omits an explicit length for unmodified patterns; Python flp-info also reports `0` in that case. |
-| `0x9C` | DWORD (u32 LE) | Tempo | `bpm × 1000` | `120000` → 120.0 BPM. Verified via `cycle.py` sweeps at 100/120/130/145/160 BPM (dev repo's `docs/fl25-event-format.md`). |
+| `0x96` | DWORD (u32 LE) | Pattern color | RGBA packed LE | Same byte packing as `0x80`. Only emitted when the user has touched the pattern's color — otherwise absent. |
+| `0x1A` | BYTE (u8) | Pattern looped flag | bool (0/1) | FL only emits this opcode when the pattern is actually looped; an unlooped pattern gets no event and consumers must default to `false`. |
+| `0xA4` | DWORD (u32 LE) | Pattern length | PPQ ticks | Value `0` means "use the project's default bar length" — FL omits an explicit length for unmodified patterns; Python `flp-info` also reports `0` in that case. |
+| `0x9C` | DWORD (u32 LE) | Tempo (modern) | `bpm × 1000` | `120000` → 120.0 BPM. Verified via `cycle.py` sweeps at 100/120/130/145/160 BPM (see `fl25-event-format.md`). Pre-FL-3.4.0 files don't emit this — use the `0x42` + `0x5D` fallback pair. |
+| `0x42` | WORD (u16 LE) | Tempo coarse (legacy) | integer BPM | Used alone on pre-3.4.0 saves (integer-only BPM), and paired with `0x5D` on 3.4.0-era files. FL 25 no longer writes this but every FL 9.x / 11.x file in the dev corpus emits it as the sole tempo source. |
+| `0x5D` | WORD (u16 LE) | Tempo fine (legacy) | milli-BPM remainder | FL 3.4.0+. Carries the decimal remainder when the legacy tempo can't be represented as an integer — e.g. `tempo = coarse + fine/1000`. Rarely needed for FL 20+ files. |
 | `0x9F` | DWORD (u32 LE) | FL build number | uint32 | Value `4960` corresponds to FL Studio 25.2.4 build 4960. |
 | `0x62` | WORD (u16 LE) | Mixer effect slot boundary (close) | Slot index (uint16) | **Closes** the current slot's accumulation — events for slot K (plugin name, wrapper, state) fire BEFORE the `0x62` that carries value K. Always emitted in groups of 10 per insert (slots 0..9), even for empty slots. For the channel walker, any `0x62` marks the end of channel-scoped events and the start of mixer section. |
 | `0x63` | WORD (u16 LE) | Arrangement identity marker | Arrangement id (uint16) | Announces a new playlist arrangement. FL 25 base projects have exactly one with id=0. Subsequent arrangement-scoped events (name, track descriptors) belong to the most-recently-announced arrangement. |
@@ -144,7 +146,8 @@ output on all five FL 25 public fixtures.
 | `0xC7` | DATA (varint + bytes) | FL version (ASCII) | Null-terminated ASCII | `"25.2.4.4960\0"`, 12 bytes on FL 25.2.4. Duplicated by the UTF-16 banner at `0x36` — the two strings serve different consumers. |
 | `0xCB` | DATA (varint + bytes) | Channel/slot name (shared) | Null-terminated UTF-16LE | **Scope-sensitive.** In channel scope (after `0x40`, before any `0x62`) it's the channel name, e.g. `"Sampler"` / `"Kick"` / `"SerumTest"`. In slot scope (after `0x62`) it's the hosted plugin's display name, e.g. `"Fruity Parametric EQ 2"`. Walkers must track the current scope to attribute correctly. |
 | `0xCD` | DATA (varint + bytes) | TimeMarker name | Null-terminated UTF-16LE | User-set marker label. Scoped to the most-recently-announced time-marker (via `0x94`). |
-| `0xCF` | DATA (varint + bytes) | **Overloaded**: the pattern-controllers event OR the project-artists event | 12-byte records (controllers) OR UTF-16LE string (artists) | the reference parser lists both at `DATA+15 = 0xCF`. In practice FL emits one or the other depending on context: non-empty multi-record blobs are pattern controllers (12-byte records: `uint32 position`, 2 reserved, `uint8 channel`, `uint8 flags`, `float32 value`); tiny payloads are the Artists UTF-16LE string. Walker size-gates on `payload.byteLength % 12 === 0 && length > 0` to route correctly. |
+| `0xCF` | DATA (varint + bytes) | Project Artists | UTF-16LE string | Empty (2-byte null placeholder) on every committed fixture. **Not** the pattern-controllers opcode — an early mis-reading had the TS parser incorrectly pointing here until the parity harness caught it. Pattern controllers live at `0xDF`. |
+| `0xDF` | DATA (varint + bytes) | Pattern controllers | Dense array of 12-byte records | Record layout: `uint32 position`, 2 reserved bytes, `uint8 channel`, `uint8 flags`, `float32 value`. Carries per-pattern keyframe automation. TS parser had this on `0xCF` until the parity harness caught the mix-up. |
 | `0xCC` | DATA (varint + bytes) | Mixer insert name | Null-terminated UTF-16LE | User-assigned name of the currently-pending insert (the one being accumulated until the next `0x93`). Absent when the user hasn't renamed the insert (master and default inserts are unnamed). Example: `"Drums"` on `base_one_insert.flp`. Distinct opcode from `0xCB`, so no scope ambiguity. |
 | `0xE1` | DATA (varint + bytes) | MixerParams sparse blob | Dense array of 12-byte records | the MixerParams event. One large blob per project (6924 B = 577 records on `base_empty.flp`). Each record: `4 reserved + uint8 id + uint8 reserved + uint16 channel_data + int32 msg`. `insertIdx = (channel_data >> 6) & 0x7F`, `slotIdx = channel_data & 0x3F`. IDs: `0=SlotEnabled, 1=SlotMix, 64..191=RouteVol, 192=Volume, 193=Pan, 194=StereoSeparation, 208..210=EQ gains, 216..218=EQ freqs, 224..226=EQ Qs`. **FL 25's `insertIdx` packing is sparse** — records exist for indices well outside the visible 0..17 range (e.g. 53, 64..80). Mapping sparse indices to visible inserts remains open; decoder exposed as raw records via `decodeMixerParams`. |
 | `0xEC` | DATA (varint + bytes) | Insert flags bitmask (FL 25 relocation) | 12-byte fixed record | **the reference parser lists `the insert-flags event = DATA+28 = 0xDC`, but FL 25 emits at `DATA+44 = 0xEC`** — fourth self-discovered FL 25 relocation (joining 0xEE track data, 0xE0 pattern notes, 0xDB channel Levels). Payload: 4 reserved + `uint32 flags` (at offset 4) + 4 reserved. Bit positions: `0=PolarityReversed, 1=SwapLeftRight, 2=EnableEffects, 3=Enabled, 4=DisableThreadedProcessing, 6=DockMiddle, 7=DockRight, 10=SeparatorShown, 11=Locked, 12=Solo, 15=AudioTrack`. Master + insert 17 default to `0x0C` (EnableEffects+Enabled); inserts 1..16 default to `0x4C` (+DockMiddle). |
@@ -376,3 +379,66 @@ Future additions to this spec should follow the same pattern:
   instead of just the generic wrapper label. Native-plugin `0xD5`
   payloads (e.g. Fruity EQ 2) are left opaque — the record-stream
   shape does not apply to them.
+
+### Parity-harness corrections — 2026-04-19 (end of day)
+
+Ran `tools/parity/run_parity.py` against `tests/corpus/local/` (85
+files, FL 9 through FL 25). The 5 public FL 25 fixtures had hidden
+the following errors because they don't exercise the code paths.
+All fixed in-place; see `README.md` parity section for the full
+table.
+
+1. **`0xD9 → 0xE9` Playlist opcode.** Hex/decimal confusion — the
+   canonical offset is `DATA + 25 = 0xE9` (208 + 25), not `0xD9`.
+2. **`0xCF → 0xDF` Controllers opcode.** Same class of error —
+   pattern controllers live at `DATA + 15 = 0xDF`. `0xCF` is the
+   TEXT-range project-artists event, completely unrelated.
+3. **Playlist clip filter.** Clips with `track_rvidx > 499` or
+   referring to non-existent channels/patterns are FL's
+   uninitialised-slot garbage; the reference parser drops them at
+   the track-assignment level. TS now does the same in
+   `buildArrangements`.
+4. **Sampler reclassification.** `channel-type enum = Instrument (4)` is
+   FL's placeholder for sample-loaded audio clips as well as for real
+   VST instrument channels. Flip to Sampler when the channel has
+   BOTH a sample path AND an emitted (even empty) plugin
+   internal-name event AND the internal-name value is falsy.
+5. **`hasPlugin` on mixer slots.** Plugin presence keys off `0xD5`
+   (plugin-state) presence, not `0xCB` (display name). Slots with
+   native plugins often have `0xD5` without a user-set display
+   name; TS now tracks both signals separately on `MixerSlot`.
+6. **Legacy tempo fallback.** Pre-FL-3.4.0 files emit `0x42`
+   (coarse, uint16 integer BPM) and optional `0x5D` (fine, uint16
+   milli-BPM remainder) instead of the unified `0x9C`. `getTempo`
+   walks modern → coarse → fine.
+7. **UTF-16LE 1-byte payloads → "".** FL 9's legacy mixer layout
+   emits 1-byte `0x00` placeholders on `0xCC` insert-name events on
+   every insert (105 of them, as a layout artifact).
+   `decodeUtf16LeBytes` now short-circuits `bytes.length < 2` to
+   return "" rather than a U+FFFD replacement character;
+   downstream `length > 0` guards drop the placeholder.
+8. **FL 9 1-slot-per-insert layout.** FL 9 doesn't emit `0x62`
+   slot-index events at all; plugin events (0xC9/0xCB/0xD5) fire
+   directly between `0xCC` and `0x93` with no per-slot divider.
+   The reference parser's slot-divide step still yields a single
+   catch-all slot when no divider fires; TS now pushes
+   `pendingSlot` at insert-close (`0x93`) when it carries any
+   plugin signal.
+9. **Channel scope exits on mixer-section opcodes.** Without this,
+   a stray `0xC9` fired inside the mixer section (between last `0x40`
+   and first `0x62`) was wrongly attributed to the last channel as
+   a phantom `plugin.internalName`. The channel walker now exits
+   channel scope on any of `0x93` / `0xCC` / `0xEC`.
+10. **Reclassification requires `0xC9` event present** (not just
+    "plugin undefined"). The rule is explicit: sample-path AND
+    internal-name events both PRESENT — even empty.
+    `sawPluginEvent: Set<number>` tracks `0xC9` emissions; the
+    reclassifier gates on membership.
+
+Parity sweep after all ten: 41/85 MATCH. Remaining 44 drift rows
+are all `filled_slots` overcount, caused by a the reference parser internal
+plugin-type dispatch that drops typed events not in its 10-plugin
+registry (BooBass, FruitKick, Plucked). Either a quirk we choose
+to mirror (3-entry blacklist of slot internal-names), or we accept
+the semantic delta in favour of the cleaner "any plugin state"
+signal.
