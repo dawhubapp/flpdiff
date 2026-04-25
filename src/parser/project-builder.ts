@@ -298,9 +298,14 @@ export function buildMixerInserts(events: readonly FLPEvent[]): MixerInsert[] {
       if (ev.value !== ROUTING_UNSET && ev.value !== pendingInsert.index) {
         pendingInsert.output = ev.value;
       }
-      // pendingSlot at this point holds any trailing insert-level
-      // events (routing etc.) that fire after the last 0x62 — drop
-      // those; they don't belong to any slot.
+      // pendingSlot at this point holds any trailing events since the
+      // last 0x62 boundary (or since insert start, on FL 9 layouts that
+      // don't emit 0x62 at all). On FL 25 these are insert-level
+      // routing events and get dropped. On FL 9, they're the sole
+      // slot the insert has, so push it if any plugin signal landed.
+      if (pendingSlot.hasPlugin === true || pendingSlot.pluginName !== undefined) {
+        pendingInsert.slots.push(pendingSlot);
+      }
       inserts.push(pendingInsert);
       pendingInsert = { index: inserts.length, slots: [] };
       pendingSlot = { index: 0 };
