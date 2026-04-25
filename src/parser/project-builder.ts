@@ -91,15 +91,13 @@ const OP_PATTERN_NAME = 0xc1;
  */
 const OP_PATTERN_NOTES = 0xe0;
 /**
- * the pattern-controllers event per the reference parser's documented DATA+15 = 0xCF. Shared
- * with the project-artists event (TEXT+15) — they collide at the byte level,
- * but Artists payloads are tiny UTF-16 strings (2 bytes for empty)
- * while Controllers are 12-byte-per-record binary. The walker uses a
- * payload-size-multiple-of-12 heuristic to distinguish. No current
- * fixture emits a controllers-shaped 0xCF; decoder activates
- * automatically when one does.
+ * Per-pattern controller-event blob. (This TS constant used to be
+ * 0xCF — the project artists opcode — which is unrelated; the parity
+ * harness on the local corpus caught the mistake. Controllers never
+ * fired on real files with thousands of per-pattern controller
+ * records.)
  */
-const OP_PATTERN_CONTROLLERS = 0xcf;
+const OP_PATTERN_CONTROLLERS = 0xdf;
 /** Pattern color (uint32 LE, RGBA byte-packed per unpackRGBA). */
 const OP_PATTERN_COLOR = 0x96;
 /** Pattern length (uint32 LE, length in PPQ ticks). Zero = default. */
@@ -409,14 +407,8 @@ export function buildPatterns(events: readonly FLPEvent[]): Pattern[] {
     if (
       ev.opcode === OP_PATTERN_CONTROLLERS &&
       ev.kind === "blob" &&
-      currentId !== undefined &&
-      ev.payload.byteLength > 0 &&
-      ev.payload.byteLength % 12 === 0
+      currentId !== undefined
     ) {
-      // Size-gate here: same opcode as the project-artists event which emits
-      // UTF-16LE payloads (2 bytes for empty, N*2 for N-char strings).
-      // Only controllers-shaped payloads (12-byte records) pass the
-      // modulo check cleanly.
       const p = byId.get(currentId);
       if (p) {
         for (const c of decodeControllers(ev.payload)) p.controllers.push(c);

@@ -45,12 +45,7 @@ export type Note = {
  * A keyframe-automation controller event within a pattern. Targets a
  * specific channel and produces a time-varying parameter value.
  *
- * Format follows the reference parser's `the controller-event layout` (12-byte records).
- * FL 25 opcode for `the pattern-controllers event` is reference-parser-documented as
- * `0xCF` (DATA+15), but on FL 25 `0xCF` is also `the project-artists event` —
- * no committed fixture currently emits a multi-record `0xCF` payload
- * so the walker uses a payload-size heuristic to distinguish (empty
- * Artists strings are 2 bytes; controller records are multiples of 12).
+ * 12-byte records carried under opcode `0xDF`.
  */
 export type Controller = {
   position: number;
