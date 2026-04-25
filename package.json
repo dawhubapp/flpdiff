@@ -1,0 +1,21 @@
+{
+  "name": "flpdiff-ts",
+  "version": "0.0.0",
+  "description": "TypeScript port of flpdiff (Epic 3 side-build) — clean-room FLP parser + browser-native diff viewer",
+  "type": "module",
+  "private": true,
+  "module": "src/index.ts",
+  "scripts": {
+    "test": "bun test",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "typed-binary": "^4.3.3"
+  }
+}

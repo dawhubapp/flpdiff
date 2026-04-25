@@ -1,0 +1,114 @@
+import { BufferReader } from "typed-binary";
+import type { ISerialInput } from "typed-binary";
+import { annotateRead, FLPParseError } from "./errors.ts";
+import { flpEvent, type FLPEvent } from "./event.ts";
+import { decodeUtf16LeBytes } from "./primitives.ts";
+
+/**
+ * FLP file header parsed from "FLhd" + "FLdt" blocks.
+ *
+ * The format field historically tracked (0=none, 1=song, ...); modern FL
+ * always writes 0. n_channels is legacy and does not reflect the project's
+ * real channel count — channels come from the event stream.
+ */
+export type FLPHeader = {
+  format: number;
+  n_channels: number;
+  ppq: number;
+};
+
+export type FLPProject = {
+  header: FLPHeader;
+  events: FLPEvent[];
+};
+
+const FLHD_MAGIC = [0x46, 0x4c, 0x68, 0x64]; // "FLhd"
+const FLDT_MAGIC = [0x46, 0x4c, 0x64, 0x74]; // "FLdt"
+
+function readMagic(input: ISerialInput, expected: number[], label: string): void {
+  annotateRead(label, input, { pathFragment: label }, () => {
+    for (let i = 0; i < expected.length; i++) {
+      const b = input.readUint8();
+      if (b !== expected[i]) {
+        throw new Error(
+          `magic mismatch: expected byte 0x${expected[i]!.toString(16).padStart(2, "0")} at position ${i}, got 0x${b.toString(16).padStart(2, "0")}`,
+        );
+      }
+    }
+  });
+}
+
+function readHeader(input: ISerialInput): FLPHeader {
+  return annotateRead("FLPHeader", input, { pathFragment: "FLhd" }, () => {
+    const headerLen = input.readUint32();
+    if (headerLen !== 6) {
+      throw new Error(`unexpected FLhd length ${headerLen}, expected 6`);
+    }
+    const format = input.readUint16();
+    const n_channels = input.readUint16();
+    const ppq = input.readUint16();
+    return { format, n_channels, ppq };
+  });
+}
+
+/**
+ * Parse an FLP file from a buffer. Returns the raw header + event list.
+ * Higher-level model assembly (channels, patterns, tracks, plugins) is
+ * a separate pass not yet implemented.
+ */
+export function parseFLPFile(buffer: ArrayBufferLike): FLPProject {
+  const input = new BufferReader(buffer, { endianness: "little" });
+  return annotateRead("FLPProject", input, { pathFragment: "FLPProject" }, () => {
+    readMagic(input, FLHD_MAGIC, "FLhd");
+    const header = readHeader(input);
+
+    readMagic(input, FLDT_MAGIC, "FLdt");
+    const dataLen = input.readUint32();
+    const dataEnd = input.currentByteOffset + dataLen;
+
+    const events: FLPEvent[] = [];
+    let eventIndex = 0;
+    while (input.currentByteOffset < dataEnd) {
+      const idx = eventIndex++;
+      try {
+        const ev = flpEvent.read(input);
+        events.push(ev);
+      } catch (e) {
+        if (e instanceof FLPParseError) {
+          throw e.extend({ eventIndex: idx, nestingPath: [`events[${idx}]`] });
+        }
+        throw e;
+      }
+    }
+
+    return { header, events };
+  });
+}
+
+/**
+ * Pick the FL Studio version banner carried in opcode 0x36 (FL 25+).
+ *
+ * Opcode 0x36 is one of the FL25 range-rule overrides — treated as a
+ * varint-prefixed blob despite falling in the 0x00-0x3F "1-byte payload"
+ * range. Payload is UTF-16LE, null-terminated, typically of the form
+ * "L Studio Producer Edition v25.2.4" (note the leading 'F' of
+ * "FL Studio" is coincidentally consumed by the length byte in a
+ * minimal project, per docs/fl25-event-format.md).
+ *
+ * Returns undefined for pre-FL-25 files, which do not emit opcode 0x36.
+ */
+export function getFLVersionBanner(project: FLPProject): string | undefined {
+  const ev = project.events.find((e) => e.kind === "blob" && e.opcode === 0x36);
+  if (!ev || ev.kind !== "blob") return undefined;
+  return decodeUtf16LeBytes(ev.payload);
+}
+
+/**
+ * Convenience: pick tempo from opcode 0x9C. Stored as tempo × 1000 (milli-BPM)
+ * in a uint32 LE payload (the 0x80-0xBF range).
+ */
+export function getTempo(project: FLPProject): number | undefined {
+  const ev = project.events.find((e) => e.kind === "u32" && e.opcode === 0x9c);
+  if (!ev || ev.kind !== "u32") return undefined;
+  return ev.value / 1000;
+}

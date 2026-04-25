@@ -304,6 +304,46 @@ Each of these is a 5-minute check during 3.1.2, not a decision.
 
 ---
 
+## Update (2026-04-18) — FL 25 override mechanism landed
+
+First Phase 3.1.2 wiring pass revealed a size encoding beyond the
+opcode-range-based scheme documented above.
+
+**Discovery.** Opcode `0x36` carries the FL version banner as
+UTF-16LE text terminated by a double-null `00 00` at an even offset,
+with **no length prefix at all**. The `0x46` byte immediately after
+the opcode is the low byte of the first UTF-16 code unit (`F` of
+`FL Studio…`), not a size field. Initial hypotheses (varint-prefixed,
+then uint16-LE-prefixed) both looked plausible until tempo parsing
+refused to align; the actual encoding came from cross-checking the
+Python fork's `_fl25_overrides.py` table, which we are allowed to
+read for *format facts* (no code copied).
+
+**Design response.** Added a per-opcode size-rule table:
+
+```ts
+export type FL25SizeRule = "utf16_zterm";
+export const FL25_OVERRIDES: ReadonlyMap<number, FL25SizeRule> =
+  new Map<number, FL25SizeRule>([ [0x36, "utf16_zterm"] ]);
+```
+
+`FLPEventSchema.read()` consults this table before falling back to
+the opcode-range rule. The three custom schemas
+(`VarIntSchema`, `Utf16LeStringSchema`, `FLPEventSchema`) are still
+the primitives; the override map is the per-opcode data-driven policy
+that `FLPEventSchema` uses to pick a length-encoding strategy.
+
+Future overrides (e.g., additional FL-25-specific opcodes discovered
+via RE sweeps) extend this map by adding a `SizeRule` variant and a
+branch in `FLPEventSchema.read()`. The format-spec doc (Phase 3.1.3)
+will host the canonical catalog of what each overridden opcode
+means semantically.
+
+**Tempo smoke test is green** on `base_empty.flp`: version banner
+`"FL Studio 25.2.4.4960.4960"`, PPQ 96, tempo 120 BPM (opcode 0x9C,
+stored as `bpm × 1000 = 120000` uint32 LE) — all match Python's
+`flp-info` output.
+
 ## Cross-references
 
 - the spec → Epic 3, Phase 3.1 — overall plan
