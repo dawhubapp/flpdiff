@@ -49,3 +49,15 @@ export type {
 export { buildProjectSummary } from "./summary.ts";
 export type { FlpInfoJson } from "./presentation/flp-info.ts";
 export { toFlpInfoJson } from "./presentation/flp-info.ts";
+export type { Match, MatchConfidence, ProjectMatch } from "./diff/matcher.ts";
+export {
+  matchChannels,
+  matchPatterns,
+  matchMixerInserts,
+  matchTracks,
+  matchArrangements,
+  matchProjects,
+  isMatched,
+  isAdded,
+  isRemoved,
+} from "./diff/matcher.ts";
