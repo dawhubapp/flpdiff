@@ -60,7 +60,8 @@ bunx flpdiff A.flp B.flp
 ## Commands
 
 ```
-flpdiff [--verbose] <A.flp> <B.flp>         Semantic diff of two FLPs
+flpdiff [--verbose] [--color|--no-color] <A.flp> <B.flp>
+                                            Semantic diff of two FLPs
 flpdiff info <file.flp> [--format F]        Inspect a single FLP
                                               F ∈ text (default) | json | canonical
 flpdiff git-setup [--global] [--textconv] [--lfs]
@@ -72,6 +73,12 @@ flpdiff --help | --version
 
 Exit codes (for `flpdiff A.flp B.flp`): `0` identical, `1` differences found,
 `2` parse / I/O error. Works in CI pipelines.
+
+Colour is auto-enabled on TTY stdout and disabled when piped or when
+`NO_COLOR` is set. Use `--color` / `--no-color` to force either way.
+Only the top-level `+` / `-` / `~` markers are painted; sub-bullets and
+headers stay in the terminal's default colour so long diffs don't read
+like jelly-bean spew.
 
 ### `flpdiff info`
 

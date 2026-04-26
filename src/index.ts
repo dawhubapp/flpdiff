@@ -157,3 +157,4 @@ export { fmtBeats, compareTrack, compareArrangement } from "./diff/arrangement-d
 export { comparePattern } from "./diff/comparator.ts";
 export type { RenderSummaryOptions } from "./diff/summary.ts";
 export { renderSummary } from "./diff/summary.ts";
+export { colorizeSummary } from "./diff/colorize.ts";

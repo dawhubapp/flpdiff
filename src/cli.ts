@@ -14,6 +14,7 @@ import { parseFLPFile } from "./parser/flp-project.ts";
 import { FLPParseError } from "./parser/errors.ts";
 import { compareProjects } from "./diff/comparator.ts";
 import { renderSummary } from "./diff/summary.ts";
+import { colorizeSummary } from "./diff/colorize.ts";
 import { diffSummaryHasChanges } from "./diff/diff-model.ts";
 import { toFlpInfoJson } from "./presentation/flp-info.ts";
 import { renderInfo } from "./info.ts";
@@ -34,7 +35,8 @@ const EXIT_DIFFERENCES = 1;
 const EXIT_ERROR = 2;
 
 const USAGE = `Usage:
-  flpdiff [--verbose] <A.flp> <B.flp>         Semantic diff between two FLPs
+  flpdiff [--verbose] [--color|--no-color] <A.flp> <B.flp>
+                                              Semantic diff between two FLPs
   flpdiff info <file.flp> [--format F]        Inspect a single FLP
     F ∈ text (default) | json | canonical
   flpdiff git-setup [--global] [--textconv] [--lfs]
@@ -92,10 +94,17 @@ export async function run(argv: readonly string[]): Promise<number> {
 async function runDiff(argv: readonly string[]): Promise<number> {
   const args = [...argv];
   let verbose = false;
+  let colorOverride: boolean | null = null;
   for (let i = args.length - 1; i >= 0; i--) {
     if (args[i] === "--verbose" || args[i] === "-v") {
       args.splice(i, 1);
       verbose = true;
+    } else if (args[i] === "--color") {
+      args.splice(i, 1);
+      colorOverride = true;
+    } else if (args[i] === "--no-color") {
+      args.splice(i, 1);
+      colorOverride = false;
     }
   }
   if (args.length !== 2) {
@@ -113,11 +122,26 @@ async function runDiff(argv: readonly string[]): Promise<number> {
     const projB = parseFLPFile(bufB);
     const result = compareProjects(projA, projB);
     const title = `${basename(pathA)} vs ${basename(pathB)}`;
-    console.log(renderSummary(result, { title, verbose }));
+    const body = renderSummary(result, { title, verbose });
+    const useColor = colorOverride ?? shouldColorizeStdout();
+    console.log(useColor ? colorizeSummary(body) : body);
     return diffSummaryHasChanges(result.summary) ? EXIT_DIFFERENCES : EXIT_IDENTICAL;
   } catch (e) {
     return handleError(e);
   }
+}
+
+/**
+ * Auto-detect whether to colorize diff output. Honours the NO_COLOR
+ * convention (https://no-color.org) and only enables colour when stdout
+ * is a TTY. Explicit `--color` / `--no-color` bypass this.
+ */
+function shouldColorizeStdout(): boolean {
+  if (process.env.NO_COLOR !== undefined && process.env.NO_COLOR !== "") {
+    return false;
+  }
+  if (process.env.TERM === "dumb") return false;
+  return Boolean(process.stdout.isTTY);
 }
 
 async function runInfo(argv: readonly string[]): Promise<number> {
