@@ -71,8 +71,15 @@ export function decodeTimestamp(
   const view = new DataView(payload.buffer, payload.byteOffset, payload.byteLength);
   const createdDays = view.getFloat64(0, true);
   const spentDays = view.getFloat64(8, true);
+  // Python's `delphi_epoch + timedelta(days=raw)` normalises to an
+  // integer microsecond count via round-half-to-even, then emits
+  // with microsecond precision. JS Date only stores integer ms and
+  // the `new Date(float)` constructor truncates toward zero — for
+  // a float like 64.57, truncation gives 64 where Python's round
+  // gives 65. Round first, then construct.
+  const ms = Math.round(DELPHI_EPOCH_MS + createdDays * MS_PER_DAY);
   return {
-    createdOn: new Date(DELPHI_EPOCH_MS + createdDays * MS_PER_DAY),
+    createdOn: new Date(ms),
     timeSpent: { seconds: spentDays * 86_400 },
   };
 }

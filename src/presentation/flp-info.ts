@@ -244,15 +244,18 @@ function pathToJson(value: string | undefined): PathJson | null {
 }
 
 /**
- * Strip a trailing `/` (or `\`) from a path string unless the path
- * IS the root separator. Mirrors `pathlib.Path(raw).as_posix()`
- * behaviour — Python's flp-info pipes `data_path` through `pathlib.Path`,
- * which normalises away trailing separators.
+ * Strip a trailing `/` from a path string unless the path IS the
+ * root separator. Mirrors `pathlib.Path(raw).as_posix()` behaviour
+ * — Python's flp-info pipes `data_path` through `pathlib.Path`
+ * which normalises away trailing POSIX separators.
+ *
+ * Does NOT strip backslashes: on macOS Python uses `PurePosixPath`
+ * where `\` is a regular character, so Windows-style paths with
+ * trailing `\` pass through unchanged. Matches Python's output.
  */
 function normalisePath(raw: string): string {
   if (raw.length <= 1) return raw;
-  const last = raw[raw.length - 1];
-  if (last === "/" || last === "\\") return raw.slice(0, -1);
+  if (raw[raw.length - 1] === "/") return raw.slice(0, -1);
   return raw;
 }
 
@@ -317,13 +320,14 @@ function toChannel(ch: Channel): ChannelJson {
   // to 1.0).
   const pan = Math.max(-1, Math.min(1, (ch.levels?.pan ?? 6400) / 6400));
   const volume = (ch.levels?.volume ?? 10000) / 12800;
-  // the reference parser's `Layer` and `Automation` subclasses don't expose `insert`
-  // or `sample_path` — Python's `the safe-attr fallback` returns None for both.
-  // Mirror that on the TS side so Pass 2 parity matches even when
-  // FL 9 legacy layouts emit 0x16 RoutedTo or 0xC4 SamplePath events
-  // within a layer/automation channel's scope.
-  const hasMixRouting = ch.kind !== "automation" && ch.kind !== "layer";
-  const hasSamplePath = ch.kind !== "automation" && ch.kind !== "layer";
+  // Python's exposure rules (returns None otherwise):
+  //  - `target_insert`: only Sampler and Instrument expose it.
+  //    Layer / Automation / generic-Channel ("unknown") don't.
+  //  - `sample_path`: only Sampler exposes it; Instrument doesn't,
+  //    even though both share a sampler-instrument lineage in the
+  //    reference model.
+  const hasMixRouting = ch.kind === "sampler" || ch.kind === "instrument";
+  const hasSamplePath = ch.kind === "sampler";
   return {
     _type: "Channel",
     iid: ch.iid,
