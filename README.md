@@ -118,10 +118,10 @@ opcode is present):
 | Entity           | Fields |
 |------------------|--------|
 | ProjectMetadata  | title, artists, genre, comments, url, dataPath, version (major/minor/patch/build), looped, showInfo, mainPitch, createdOn, timeSpent |
-| Channel          | iid, kind, name, sample_path, plugin (internalName/name/vendor), color (RGBA), levels (pan/volume/pitch_shift/filter_mod_x/y/type), enabled, pingPongLoop, locked, targetInsert, automationPoints |
+| Channel          | iid, kind, name, sample_path, plugin (internalName/name/vendor), color (RGBA), levels (pan/volume/pitch_shift/filter_mod_x/y/type), enabled, pingPongLoop, locked, zipped, targetInsert, automationPoints |
 | MixerInsert      | index, name, color, icon, output, input, pan/volume/stereoSeparation (from MixerParams), flags (11 named booleans), slots |
 | MixerSlot        | index, pluginName, internalName, pluginVstName, pluginVendor, hasPlugin, enabled, mix |
-| Pattern          | id, name, length, color, looped, notes (13-field records), controllers |
+| Pattern          | id, name, length, color, looped, notes (14-field records incl. raw `flags` + derived `slide`), controllers |
 | Arrangement      | id, name, tracks (full Track[] with iid/color/icon/enabled/height/locked/name), clips, timemarkers (marker or signature kind) |
 
 Plus the **presentation layer** at `src/presentation/flp-info.ts` —
@@ -259,21 +259,27 @@ FL 25   8/8   ✅
    indices like `0, 53, 64..80` that don't map 1:1 to visible insert
    indices 0..17. Raw decoder ships (`decodeMixerParams`); attribution
    to `MixerInsert.slots[].enabled/mix` awaits mapping work.
-3. **Muted channel state** — Python reports `muted: false` on every
-   channel; source opcode not yet located (possibly inside Levels or a
-   flag we haven't decoded).
-4. **Channel IsZipped (`0x0F`)** — opcode known from the reference parser, no fixture
-   has a zipped channel so no end-to-end path yet.
-5. **Note flags bitmask** — each Note carries `flags: number` raw; bit
-   positions (Slide = `1<<3`, etc.) not yet decoded as named booleans.
-6. **Clip-bearing fixtures** — no committed fixture emits `0xE9`
+3. **Clip-bearing fixtures** — no committed fixture emits `0xE9`
    playlist clips or `0x94` time-markers; decoders are unit-tested via
    crafted payloads and will activate automatically when a fixture
    exercises them.
-7. **Pass 2 parity** — value-level (channel volume, pan, color, insert
-   routing, note properties) with unit normalisation between Python's
-   normalised-float space and FL's raw integer storage. Pass 1
-   (counts-and-kinds shape) is at 85/85 and can be deferred here.
+4. **Zipped-channel end-to-end fixture** — `0x0F` BoolEvent decoder is
+   live (`Channel.zipped`), but none of the 85 corpus files has a
+   collapsed channel to exercise the "true" branch.
+
+**Closed in prior sessions:**
+- Pass 1 parity: **85/85** (counts-and-kinds).
+- Pass 2 parity: **83/85** (full `flp-info --format=json` byte-for-byte;
+  2 remaining deltas are a Kickstart VST wrapper-vendor case where TS is
+  more faithful than Python, and one file where Python's `flp-info`
+  crashes). See parity section for detail.
+- Muted channel state: investigated — the reference parser has no `a channel-muted event`,
+  Python's `flp_diff.Channel.muted` defaults to False; TS presentation
+  layer matches by construction. `enabled` (IsEnabled `0x00`) is the
+  sole audibility signal.
+- Note flags bitmask: `Note.slide` now derived from `flags & 0x08`,
+  mirroring the reference parser's only catalogued flag. Raw `flags` kept alongside
+  for future bit additions and round-trip fidelity.
 
 ## For the next session
 
@@ -285,8 +291,10 @@ remaining are arguably-correct edge cases). Two natural paths:
    5/5. Port Python's matcher + comparator + summary formatter
    from `src/flp_diff/{matcher,comparator,summary}.py`. Four
    sub-phases per parent SPEC.
-2. **Keep deepening Phase 3.3** — items from the "Known open
-   format work" list above (channel muted, IsZipped, note flag
-   decoding). Each is ~1 commit of similar shape to recent work.
+2. **Keep deepening Phase 3.3** — remaining items in the "Known
+   open format work" list above: MixerParams sparse-index mapping
+   (attribution to visible slots), routing matrix, clip-bearing
+   fixtures to activate end-to-end playlist decoders, and any
+   further reference-parser-side features not yet mirrored.
 
 Roman's been explicit that Phase 3.4 waits for confirmation.
