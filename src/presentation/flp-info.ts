@@ -360,32 +360,29 @@ function toTimeMarker(m: TimeMarker): TimeMarkerJson {
   };
 }
 
-/**
- * Arrangement tracks. TS parser currently only counts tracks (via `0xEE`
- * TrackData events) — doesn't decode per-track name / color / height /
- * muted / items. Emit Python's exact-shape defaults for every track
- * slot so the harness doesn't whine about structural mismatch.
- *
- * FL 25 base project default track color — derived by inspection of
- * fresh fixtures. Matches Python's `flp-info` output exactly.
- */
-const DEFAULT_TRACK_COLOR: RGBA = { r: 52, g: 57, b: 58, a: 0 };
-
-function synthesizeTracks(count: number): TrackJson[] {
-  const out: TrackJson[] = new Array(count);
-  for (let i = 0; i < count; i++) {
-    // Python's Track.index is 1-based (1..500).
-    out[i] = {
-      _type: "Track",
-      index: i + 1,
-      name: null,
-      color: rgbaToJson(DEFAULT_TRACK_COLOR),
-      height: 1.0,
-      muted: false,
-      items: [],
-    };
-  }
-  return out;
+function toTrack(t: Arrangement["tracks"][number]): TrackJson {
+  return {
+    _type: "Track",
+    // Python's adapter prefers the decoded iid, falling back to a
+    // 1-based enumeration index (our walker stores 0-based, +1
+    // here). For default FL 25 tracks the decoded `iid` is 0 and
+    // the fallback to index kicks in.
+    index: (t.iid && t.iid !== 0) ? t.iid : t.index + 1,
+    name: t.name ?? null,
+    color: rgbaToJson(t.color),
+    height: t.height ?? 1.0,
+    // Python defines `muted` as `not enabled`. Our `enabled` decodes
+    // from the track blob byte 12; default when absent is `true` →
+    // `muted = false`.
+    muted: !(t.enabled ?? true),
+    // Per-track playlist items are computed by Python from the
+    // track_rvidx → track_idx mapping against the Playlist clips.
+    // Our parser keeps clips at the arrangement level (not per
+    // track). For now emit [] which matches the default for
+    // fresh/empty tracks. TODO: redistribute clips per track when
+    // a fixture needs it.
+    items: [],
+  };
 }
 
 function toArrangement(a: Arrangement): ArrangementJson {
@@ -393,7 +390,7 @@ function toArrangement(a: Arrangement): ArrangementJson {
     _type: "Arrangement",
     index: a.id,
     name: a.name ?? null,
-    tracks: synthesizeTracks(a.trackCount),
+    tracks: a.tracks.map(toTrack),
     timemarkers: a.timemarkers.map(toTimeMarker),
   };
 }

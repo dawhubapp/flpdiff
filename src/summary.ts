@@ -140,7 +140,7 @@ function pickPattern(p: FLPProject["patterns"][number]): PatternSummary {
 function pickArrangement(a: FLPProject["arrangements"][number]): ArrangementSummary {
   const out: ArrangementSummary = {
     id: a.id,
-    trackCount: a.trackCount,
+    trackCount: a.tracks.length,
     clips: a.clips.map((c) => ({ ...c })),
     timemarkers: a.timemarkers.map((m) => ({ ...m })),
   };

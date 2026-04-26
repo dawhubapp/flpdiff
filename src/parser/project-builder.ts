@@ -11,7 +11,7 @@ import {
   decodeMixerParams,
 } from "../model/mixer-insert.ts";
 import { type Pattern, decodeNotes, decodeControllers } from "../model/pattern.ts";
-import { type Arrangement, type TimeMarker, decodeClips, decodeTimeMarkerPosition } from "../model/arrangement.ts";
+import { type Arrangement, type Track, type TimeMarker, decodeClips, decodeTimeMarkerPosition, decodeTrackData } from "../model/arrangement.ts";
 import { type ProjectMetadata, decodeTimestamp } from "../model/metadata.ts";
 
 /**
@@ -150,6 +150,8 @@ const OP_ARRANGEMENT_NAME = 0xf1;
  * most are empty; counting these gives the project's track count.
  */
 const OP_TRACK_DATA = 0xee;
+/** Track name (UTF-16LE on FL 25; blank / not emitted by default). */
+const OP_TRACK_NAME = 0xef;
 /**
  * Arrangement playlist clips — array of 32-byte (pre-FL-21) or
  * 60-byte (FL 21+) clip records. FL simply omits the event when the
@@ -799,7 +801,7 @@ export function buildArrangements(
   for (const ev of events) {
     if (ev.opcode === OP_ARRANGEMENT_NEW && ev.kind === "u16") {
       flushMarker();
-      current = { id: ev.value, trackCount: 0, clips: [], timemarkers: [] };
+      current = { id: ev.value, tracks: [], clips: [], timemarkers: [] };
       arrangements.push(current);
       continue;
     }
@@ -808,8 +810,17 @@ export function buildArrangements(
       current.name = decodeUtf16LeBytes(ev.payload);
       continue;
     }
-    if (ev.opcode === OP_TRACK_DATA) {
-      current.trackCount++;
+    if (ev.opcode === OP_TRACK_DATA && ev.kind === "blob") {
+      const track = decodeTrackData(ev.payload, current.tracks.length);
+      current.tracks.push(track);
+      continue;
+    }
+    if (ev.opcode === OP_TRACK_NAME && ev.kind === "blob") {
+      // 0xEF follows the 0xEE blob it names. Attach to the most-
+      // recently-pushed track. FL emits this event only when the
+      // user has set a custom name; default tracks get no 0xEF.
+      const last = current.tracks[current.tracks.length - 1];
+      if (last) last.name = decodeUtf16LeBytes(ev.payload);
       continue;
     }
     if (ev.opcode === OP_PLAYLIST && ev.kind === "blob") {

@@ -35,20 +35,21 @@ describe("Arrangement extraction — oracle parity", () => {
     expect(arrangements.length).toBe(1);
     expect(arrangements[0]!.id).toBe(0);
     expect(arrangements[0]!.name).toBe("Arrangement");
-    expect(arrangements[0]!.trackCount).toBe(500);
+    expect(arrangements[0]!.tracks.length).toBe(500);
   });
 });
 
 describe("formatArrangementSummary", () => {
+  const fakeTracks = (n: number) => Array.from({ length: n }, (_, i) => ({ index: i }));
   test("1 arrangement with 500 tracks", () => {
-    const arr: Arrangement[] = [{ id: 0, name: "Main", trackCount: 500, clips: [], timemarkers: [] }];
+    const arr: Arrangement[] = [{ id: 0, name: "Main", tracks: fakeTracks(500), clips: [], timemarkers: [] }];
     expect(formatArrangementSummary(arr)).toBe("1 arrangement (500 tracks)");
   });
 
   test("2 arrangements each with 500 tracks", () => {
     const arr: Arrangement[] = [
-      { id: 0, trackCount: 500, clips: [], timemarkers: [] },
-      { id: 1, trackCount: 500, clips: [], timemarkers: [] },
+      { id: 0, tracks: fakeTracks(500), clips: [], timemarkers: [] },
+      { id: 1, tracks: fakeTracks(500), clips: [], timemarkers: [] },
     ];
     expect(formatArrangementSummary(arr)).toBe("2 arrangements (500 + 500 tracks)");
   });

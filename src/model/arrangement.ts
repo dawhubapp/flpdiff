@@ -2,11 +2,9 @@
  * A playlist arrangement — the timeline view in FL Studio. Each FL 25
  * project has at least one (default-named "Arrangement") and may have
  * many if the user adds them.
- *
- * Skeleton scope: id + name + count of track descriptors. Timemarkers,
- * per-track names/colors/heights, and the playlist-clip content itself
- * land in follow-up commits.
  */
+import type { RGBA } from "./channel.ts";
+
 /**
  * One playlist clip within an arrangement. Mirrors FL's on-disk record
  * shape as emitted inside the `0xE9` arrangement-playlist blob.
@@ -97,18 +95,73 @@ export function decodeTimeMarkerPosition(raw: number): { kind: TimeMarkerKind; p
   return { kind: "marker", position: raw };
 }
 
+/**
+ * A per-arrangement track descriptor. Decoded from opcode `0xEE`
+ * (per-track data blob); FL 25 base projects emit 500 of these per
+ * arrangement.
+ */
+export type Track = {
+  /** Zero-based index within the arrangement — derived from walker order. Presentation layer shifts to 1-based to match Python's flp-info. */
+  index: number;
+  /** FL's internal track iid (first uint32 of the TrackData blob). */
+  iid?: number;
+  /** User-set track name. Sourced from opcode `0xEF`. */
+  name?: string;
+  /** RGBA color stored in the blob's bytes 4-7 (uint32 LE, packed same as channel/insert colors). */
+  color?: RGBA;
+  /** Icon id (blob bytes 8-11, uint32 LE). */
+  icon?: number;
+  /** Enable flag (blob byte 12, u8 bool). Track-level "mute" is the inverse. */
+  enabled?: boolean;
+  /** Track height multiplier (blob bytes 13-16, float32 LE). FL's "100%" default is `1.0`. */
+  height?: number;
+  /** Track-locked flag from blob byte 48 (u8 bool). */
+  locked?: boolean;
+};
+
+/**
+ * Decode a `0xEE` track-data payload into a `Track` record. Reads
+ * the leading six fields — iid / color / icon / enabled / height /
+ * (skip to offset 48) locked — which is what Python's `flp-info`
+ * surfaces. The trailing motion / press / trigger_sync / queued /
+ * tolerant / position_sync / grouped fields aren't exposed yet.
+ *
+ * FL 25 writes a fixed 70-byte payload per track; FL 20.9.1+ writes
+ * ~66 bytes; older FL writes short records. Missing trailing bytes
+ * just leave fields `undefined`.
+ */
+export function decodeTrackData(payload: Uint8Array, index: number): Track {
+  const view = new DataView(payload.buffer, payload.byteOffset, payload.byteLength);
+  const track: Track = { index };
+  if (payload.byteLength >= 4) track.iid = view.getUint32(0, true);
+  if (payload.byteLength >= 8) {
+    const raw = view.getUint32(4, true);
+    track.color = {
+      r: raw & 0xff,
+      g: (raw >> 8) & 0xff,
+      b: (raw >> 16) & 0xff,
+      a: (raw >> 24) & 0xff,
+    };
+  }
+  if (payload.byteLength >= 12) track.icon = view.getUint32(8, true);
+  if (payload.byteLength >= 13) track.enabled = view.getUint8(12) !== 0;
+  if (payload.byteLength >= 17) track.height = view.getFloat32(13, true);
+  if (payload.byteLength >= 49) track.locked = view.getUint8(48) !== 0;
+  return track;
+}
+
 export type Arrangement = {
   /** FL-assigned arrangement id from opcode `0x63`. */
   id: number;
   /** User-assigned arrangement name, from opcode `0xF1`. Defaults to `"Arrangement"` on fresh FL 25 projects. */
   name?: string;
   /**
-   * Count of per-track data descriptors (opcode `0xEE`) that belong to
-   * this arrangement. FL 25 emits 500 track slots by default, each
-   * carrying a 70-byte data blob, regardless of whether any clips
-   * exist on them.
+   * Per-track descriptors (opcode `0xEE`). FL 25 emits 500 track
+   * slots by default, each carrying a 70-byte blob. Decoded into
+   * `Track` records; per-track name (opcode `0xEF`) attaches to
+   * the last-emitted track.
    */
-  trackCount: number;
+  tracks: Track[];
   /**
    * Playlist clips on this arrangement's timeline, decoded from
    * opcode `0xE9`. FL omits the event entirely when there are no
@@ -131,7 +184,7 @@ export type Arrangement = {
 export function formatArrangementSummary(arrangements: readonly Arrangement[]): string {
   const n = arrangements.length;
   if (n === 0) return "0 arrangements";
-  const tracksPart = arrangements.map((a) => String(a.trackCount)).join(" + ");
+  const tracksPart = arrangements.map((a) => String(a.tracks.length)).join(" + ");
   const suffix = n === 1 ? `${tracksPart} tracks` : `${tracksPart} tracks`;
   const word = n === 1 ? "arrangement" : "arrangements";
   return `${n} ${word} (${suffix})`;
