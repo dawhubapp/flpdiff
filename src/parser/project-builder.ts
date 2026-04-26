@@ -190,12 +190,27 @@ const OP_TIMEMARKER_DENOMINATOR = 0x22;
 const OP_TIMEMARKER_NAME = 0xcd;
 
 /**
- * Project-level metadata opcodes. the reference parser lists them as `project-level events`
- * events in the envelope section that fires before channels/patterns/
- * mixer. We pick up the ones `flp-info --format=json` exposes.
+ * Project-level metadata opcodes. These fire in the envelope section
+ * before channels/patterns/mixer. We pick up the ones
+ * `flp-info --format=json` exposes.
  */
-const OP_PROJECT_LOOP_ACTIVE = 0x09; // the loop-active event (BYTE, bool)
-const OP_PROJECT_SHOW_INFO = 0x0a; // the show-info event (BYTE, bool)
+const OP_PROJECT_LOOP_ACTIVE = 0x09; // loop-active flag (u8 bool)
+const OP_PROJECT_SHOW_INFO = 0x0a; // show-info flag (u8 bool)
+/**
+ * Legacy master-volume opcode (u8). Not emitted by FL 25; retained
+ * as a decode point for any older file that still carries it.
+ */
+const OP_PROJECT_VOLUME = 0x0c;
+/**
+ * Time signature numerator / denominator (u8 each). FL writes the
+ * time signature as two independent u8 events in the project header
+ * (not inside any arrangement subtree), so they're walkable from
+ * the flat event stream.
+ */
+const OP_PROJECT_TIME_SIG_NUM = 0x11;
+const OP_PROJECT_TIME_SIG_DENOM = 0x12;
+/** Pan law (u8): 0 = Circular (default), 2 = Triangular. */
+const OP_PROJECT_PAN_LAW = 0x17;
 const OP_PROJECT_PITCH = 0x50; // main pitch (i16 signed)
 const OP_PROJECT_TITLE = 0xc2; // UTF-16LE null-terminated
 const OP_PROJECT_COMMENTS = 0xc3; // UTF-16LE (plaintext, pre-FL-1.2.10)
@@ -326,6 +341,22 @@ export function buildMetadata(events: readonly FLPEvent[]): ProjectMetadata {
     if (ev.opcode === OP_PROJECT_PITCH && ev.kind === "u16" && out.mainPitch === undefined) {
       // WORD+16 is stored as uint16 by the walker; interpret as signed int16.
       out.mainPitch = ev.value > 0x7fff ? ev.value - 0x10000 : ev.value;
+      continue;
+    }
+    if (ev.opcode === OP_PROJECT_VOLUME && ev.kind === "u8" && out.mainVolume === undefined) {
+      out.mainVolume = ev.value;
+      continue;
+    }
+    if (ev.opcode === OP_PROJECT_PAN_LAW && ev.kind === "u8" && out.panLaw === undefined) {
+      out.panLaw = ev.value;
+      continue;
+    }
+    if (ev.opcode === OP_PROJECT_TIME_SIG_NUM && ev.kind === "u8" && out.timeSignatureNumerator === undefined) {
+      out.timeSignatureNumerator = ev.value;
+      continue;
+    }
+    if (ev.opcode === OP_PROJECT_TIME_SIG_DENOM && ev.kind === "u8" && out.timeSignatureDenominator === undefined) {
+      out.timeSignatureDenominator = ev.value;
       continue;
     }
     if (ev.opcode === OP_PROJECT_TIMESTAMP && ev.kind === "blob" && out.createdOn === undefined) {

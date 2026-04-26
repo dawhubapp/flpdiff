@@ -49,6 +49,31 @@ export type ProjectMetadata = {
    * `createdOn` — the second float64 holds the duration in days.
    */
   timeSpent?: { seconds: number };
+  /**
+   * Project time signature. Numerator from opcode `0x11` (u8).
+   * Typical values `3` or `4`.
+   *
+   * Not surfaced in Python's `flp-info` JSON (its adapter doesn't
+   * populate `ProjectMetadata.time_signature`), so kept as a
+   * TS-internal enrichment.
+   */
+  timeSignatureNumerator?: number;
+  /** Time signature denominator from opcode `0x12` (u8). */
+  timeSignatureDenominator?: number;
+  /**
+   * Main volume (master out) from opcode `0x0C` (u8). Legacy opcode
+   * — FL 25 no longer emits it on typical saves. Kept as optional
+   * decoder for completeness; absent on every file in the current
+   * corpus.
+   */
+  mainVolume?: number;
+  /**
+   * Pan law — 0 = Circular (default), 2 = Triangular. From opcode
+   * `0x17` (u8). Non-default values observed on a handful of corpus
+   * files. Python's `flp-info` JSON output always emits `pan_law: 0`
+   * regardless, so the real value lives here for TS-internal use.
+   */
+  panLaw?: number;
 };
 
 /**
