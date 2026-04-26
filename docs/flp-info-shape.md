@@ -258,13 +258,83 @@ Expected: both sides emit `[]`; runner treats as strict match.
 | `pattern.id` | `pattern.iid` | rename |
 | `channel.plugin.internalName` | `channel.plugin.name` (native) | rename; VST case uses `plugin.name` |
 
-## Fields the TS parser does NOT currently decode (drift expected)
+## Pass 2 closure log
 
-- Metadata: `title`, `artists`, `genre`, `comments`, `format`, `created_on`, `time_spent`, `data_path`, `url`, `main_pitch`, `main_volume`, `pan_law`, `looped`, `show_info`, `time_signature`
-- Channel: `muted`, `target_insert`, `automation_points`
-- MixerInsert: `pan`, `volume`, `stereo_separation`, `routes_to`, per-slot `enabled`
-- Track: `name`, `color`, `height`, `muted`, `items`
-- Pattern: (Note extras are deliberately omitted to match Python's surface)
+Initial Pass 2 run: 0/85. Final: **83/85** after these decoder /
+presentation-layer commits:
 
-Each of these becomes a targeted parser commit when the Pass 2 run
-surfaces the drift.
+### Metadata decoders landed
+- `0xC2` title → `metadata.title`
+- `0xED` timestamp (float64 Delphi days) →
+  `created_on.iso` + `time_spent.seconds`
+- `0x09` loop-active → `metadata.looped`
+- `0x0A` show-info → `metadata.show_info`
+- `0xC3` comments → `metadata.comments`
+- `0xC5` url → `metadata.url`
+- `0xC6` RTF comments → `metadata.comments` fallback
+- `0xC7` FL version (ASCII) → `metadata.version`
+- `0x9F` FL build → `metadata.version.build` upgrade
+- `0xCA` data path → `metadata.data_path`
+- `0xCE` genre → `metadata.genre`
+- `0xCF` artists → `metadata.artists`
+- `0x50` main pitch (int16 signed) → `metadata.main_pitch`
+
+### Channel decoders landed
+- `0x16` routed-to (int8) → `channel.target_insert`
+- `0xEA` channel automation (keyframe stream) →
+  `channel.automation_points`
+
+### Arrangement / mixer decoders landed
+- `0xEE` per-track data (70-byte struct) → per-track
+  `iid / color / icon / enabled / height / locked`
+- `0xEF` track name → per-track `name`
+- Per-track playlist-item redistribution from `arrangement.clips`
+  via `track_idx = 499 - clip.track_rvidx`
+- `0xE1` MixerParams sparse-indexed records → insert
+  `pan / volume / stereo_separation` + slot `enabled / mix`
+- Slot-level VST wrapper extraction
+  (`internalName === "Fruity Wrapper"` + 0xD5) →
+  `pluginVstName / pluginVendor`
+
+### Presentation-layer semantic mirrors
+- Two-pass metadata decode: scan 0xC7 first to determine FL
+  version, then thread `legacy` flag through every walker so
+  text events decode as ASCII (FL <11.5) vs UTF-16LE (FL 11.5+)
+- `pythonRound` helper — JS `Math.round` rounds half up, Python's
+  `round()` uses banker's rounding. AutomationPoint positions
+  need banker's to match.
+- `normalisePath` — POSIX trailing-slash strip only (`/`), preserve
+  Windows `\` (Python on macOS uses `PurePosixPath`).
+- Datetime microsecond rounding — `new Date(float)` truncates,
+  Python's `timedelta` round-to-nearest; `Math.round` before Date.
+- `slot.enabled` hardcoded `true` — a quirk of the reference
+  Python adapter (it can't read the SlotEnabled bit out of the
+  slot's params record, falls back to `True`). Mirror.
+- `insert.enabled / locked` default `false` (not `true` / `false`
+  native) — the reference adapter returns None when the
+  insert-flags event can't be parsed (FL 9 5-byte payloads vs the
+  FL 25 12-byte layout), then coerces `bool(None) = False`.
+  Mirror.
+- `slot.plugin` keyed strictly off 0xD5 presence (not 0xCB name).
+  Slots with a 0xCB rename but no 0xD5 state blob return None in
+  Python.
+- Layer / Automation / Unknown-kind channel filters — the
+  reference adapter returns None for `target_insert` / `sample_path`
+  on channel kinds that don't expose those properties.
+- `version.build: null` when 0xC7 is 3-component AND no 0x9F
+  fallback.
+- Post-walk channel-name scan — the reference parser returns the
+  first plugin/channel-name event across the channel's full
+  subtree (`0x40` to next `0x40`), even events that fire in the
+  mixer section. Our main walker closes channel scope at
+  `0x93`/`0xEC`; a second pass finds first `0xCB` per channel
+  range and overrides.
+
+### Remaining drift (2 files)
+
+1. `h1_86.flp insert[19].slots[0].plugin.vendor`: TS extracts
+   "FabFilter" from the VST wrapper blob, Python emits `null`.
+   Likely a cross-slot blob artefact; our extraction is arguably
+   more faithful.
+2. `Astes - Bien Duro.flp`: PY_ERROR — `flp-info` crashes on
+   this file (not a TS issue).

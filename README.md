@@ -15,13 +15,13 @@ TypeScript 6 + Bun 1.3.9 + typed-binary 4.3.3.
   `buildProjectSummary(project)`.
 - **85/85 local corpus — Pass 1** (counts-and-kinds shape), every FL
   version 9 through 25 at 100%.
-- **75/85 local corpus — Pass 2** (full `flp-info --format=json`
+- **83/85 local corpus — Pass 2** (full `flp-info --format=json`
   byte-for-byte with 1e-4 float tolerance) via the new TS
-  presentation layer at `src/presentation/flp-info.ts`. Remaining 10
-  drift files are all FL 9 edge cases (Python's coarser event-subtree
-  division attributes mixer-section 0xCB/0xCC differently) plus one
-  FL 20 plugin.vendor case (Python misses a vendor we correctly
-  extract — arguably our behaviour is more faithful).
+  presentation layer at `src/presentation/flp-info.ts`. FL 9-12 at
+  100%, FL 21-24 at 100%, 1 FL 20 single-file edge case (Kickstart
+  VST wrapper with a FabFilter vendor string we extract but Python
+  misses — arguably our output is more faithful), 1 FL 25 file
+  that crashes Python's `flp-info` (not a TS issue).
 
 This repo is a nested git repo alongside the main Python `flpdiff`
 codebase. It exists to explore two asymmetric wins that Python cannot
@@ -191,9 +191,9 @@ by FL major version. **85/85 on Roman's 85-file local corpus.**
 `flp-info --format=json` directly and compares against the TS
 presentation layer's output (`src/presentation/flp-info.ts` —
 `toFlpInfoJson(project)`). 1e-4 float tolerance. Stratified per FL
-major + per-field-path drift ranking for prioritisation. **75/85** —
-all 9 FL-25, 12 FL-24, 16 FL-21 files pass; 10 FL 9-era edge cases
-remain.
+major + per-field-path drift ranking for prioritisation. **83/85**
+on the local corpus — all FL 9/11/12/21/24 files pass, 7/8 FL 25
+(1 PY_ERROR), 31/32 FL 20 (1 wrapper-vendor edge case).
 
 ```sh
 .venv/bin/python ts/tools/parity/run_pass2.py tests/corpus/local
@@ -252,18 +252,15 @@ FL 25   8/8   ✅
 
 ## For the next session
 
-Pass 1 and Pass 2 both landed. Three natural paths:
+Parity essentially done — Pass 1 85/85, Pass 2 83/85 (both
+remaining are arguably-correct edge cases). Two natural paths:
 
-1. **Start Phase 3.4** (diff engine port). Parser coverage is very
-   solid — 85/85 Pass 1, 75/85 Pass 2, 5/5 public oracle. Port
-   Python's matcher + comparator + summary formatter from
-   `src/flp_diff/{matcher,comparator,summary}.py`. Four sub-phases
-   per parent SPEC.
-2. **Close the remaining 10 Pass 2 drifts** (all FL 9-era edge
-   cases around 0xCB/0xCC attribution). These need a second pass
-   post-walk to emulate Python's coarse event-subtree division;
-   probably another ~2-3 commits of careful work.
-3. **Keep deepening Phase 3.3** — items from the "Known open
+1. **Start Phase 3.4** (diff engine port). Parser coverage is
+   extremely solid — Pass 1 85/85, Pass 2 83/85, public oracle
+   5/5. Port Python's matcher + comparator + summary formatter
+   from `src/flp_diff/{matcher,comparator,summary}.py`. Four
+   sub-phases per parent SPEC.
+2. **Keep deepening Phase 3.3** — items from the "Known open
    format work" list above (channel muted, IsZipped, note flag
    decoding). Each is ~1 commit of similar shape to recent work.
 
