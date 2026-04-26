@@ -46,3 +46,5 @@ export type {
   ArrangementSummary,
 } from "./summary.ts";
 export { buildProjectSummary } from "./summary.ts";
+export type { FlpInfoJson } from "./presentation/flp-info.ts";
+export { toFlpInfoJson } from "./presentation/flp-info.ts";
