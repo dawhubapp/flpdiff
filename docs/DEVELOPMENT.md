@@ -177,8 +177,7 @@ ts/
 │   ├── flp-info-shape.md        # Pass-2 contract + full closure log
 │   └── fl-format/               # FL binary format knowledge (symlinked from python/docs/)
 │       ├── flp-format-spec.md   # clean-room FLP format spec (living catalog)
-│       ├── fl25-event-format.md
-│       └── fl-scripting-notes.md
+│       └── fl25-event-format.md
 ├── src/
 │   ├── index.ts                 # public exports (parseFLPFile, toFlpInfoJson, etc.)
 │   ├── cli.ts                   # flpdiff CLI
