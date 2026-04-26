@@ -18,7 +18,7 @@ import type { FLPProject } from "../parser/flp-project.ts";
 import type { Channel, RGBA, ChannelPlugin } from "../model/channel.ts";
 import type { MixerInsert, MixerSlot } from "../model/mixer-insert.ts";
 import type { Pattern, Note } from "../model/pattern.ts";
-import type { Arrangement, TimeMarker } from "../model/arrangement.ts";
+import type { Arrangement, Clip, TimeMarker } from "../model/arrangement.ts";
 
 // --- JSON shape types (mirroring Python's `flp-info` output) ---------- //
 
@@ -107,6 +107,15 @@ type MixerJson = {
   inserts: MixerInsertJson[];
 };
 
+type PlaylistItemJson = {
+  _type: "PlaylistItem";
+  position: number;
+  length: number;
+  pattern_iid: number | null;
+  channel_iid: number | null;
+  muted: boolean;
+};
+
 type TrackJson = {
   _type: "Track";
   index: number;
@@ -114,7 +123,7 @@ type TrackJson = {
   color: RgbaJson | null;
   height: number;
   muted: boolean;
-  items: unknown[];
+  items: PlaylistItemJson[];
 };
 
 type TimeMarkerJson = {
@@ -380,7 +389,28 @@ function toTimeMarker(m: TimeMarker): TimeMarkerJson {
   };
 }
 
-function toTrack(t: Arrangement["tracks"][number]): TrackJson {
+/** Shared pattern/channel discriminator. Matches PLAYLIST_PATTERN_BASE in project-builder.ts. */
+const PLAYLIST_PATTERN_BASE = 20480;
+
+function toPlaylistItem(clip: Clip): PlaylistItemJson {
+  const isPattern = clip.item_index > PLAYLIST_PATTERN_BASE;
+  return {
+    _type: "PlaylistItem",
+    position: clip.position,
+    length: clip.length,
+    pattern_iid: isPattern ? clip.item_index - PLAYLIST_PATTERN_BASE : null,
+    channel_iid: isPattern ? null : clip.item_index,
+    // Python always emits `muted: false`; the reference parser
+    // can't read this bit out of the playlist record so a
+    // fallback in the reference adapter returns the default. Match.
+    muted: false,
+  };
+}
+
+/** Track-rvidx max for FL 12.9.1+. Matches PLAYLIST_MAX_TRACK_IDX in project-builder.ts. */
+const TRACK_RVIDX_MAX = 499;
+
+function toTrack(t: Arrangement["tracks"][number], items: PlaylistItemJson[]): TrackJson {
   return {
     _type: "Track",
     // Python's adapter prefers the decoded iid, falling back to a
@@ -399,22 +429,36 @@ function toTrack(t: Arrangement["tracks"][number]): TrackJson {
     // from the track blob byte 12; default when absent is `true` →
     // `muted = false`.
     muted: !(t.enabled ?? true),
-    // Per-track playlist items are computed by Python from the
-    // track_rvidx → track_idx mapping against the Playlist clips.
-    // Our parser keeps clips at the arrangement level (not per
-    // track). For now emit [] which matches the default for
-    // fresh/empty tracks. TODO: redistribute clips per track when
-    // a fixture needs it.
-    items: [],
+    items,
   };
 }
 
 function toArrangement(a: Arrangement): ArrangementJson {
+  // Per-track clip redistribution. The reference adapter walks the
+  // playlist blob and groups clips by the relation
+  // `track_idx = max_idx - track_rvidx` (max_idx = 499 on FL 12.9.1+).
+  // Our clips already live on the arrangement in stream order; bucket
+  // them per track index, then hand each track its slice.
+  const itemsByTrack = new Map<number, PlaylistItemJson[]>();
+  for (const clip of a.clips) {
+    const trackIdx = TRACK_RVIDX_MAX - clip.track_rvidx;
+    const bucket = itemsByTrack.get(trackIdx) ?? [];
+    bucket.push(toPlaylistItem(clip));
+    itemsByTrack.set(trackIdx, bucket);
+  }
   return {
     _type: "Arrangement",
     index: a.id,
     name: a.name ?? null,
-    tracks: a.tracks.map(toTrack),
+    tracks: a.tracks.map((t) =>
+      // Walker indexes tracks 0..499; Python's track index is the
+      // decoded iid or a 1-based enumeration. We key the bucket by
+      // the same `track_idx` derived from `track_rvidx`, which
+      // matches the walker's 0-based `t.index` because the `0xEE`
+      // events emit in the same order the reference parser walks
+      // tracks.
+      toTrack(t, itemsByTrack.get(t.index) ?? []),
+    ),
     timemarkers: a.timemarkers.map(toTimeMarker),
   };
 }
