@@ -51,6 +51,16 @@ export type { FlpInfoJson } from "./presentation/flp-info.ts";
 export { toFlpInfoJson } from "./presentation/flp-info.ts";
 export { renderInfo } from "./info.ts";
 export { renderCanonical, CANONICAL_HEADER } from "./canonical.ts";
+export type { Scope, DriverMode, SetupOptions, SetupResult } from "./git.ts";
+export {
+  DRIVER_NAME,
+  GIT_ATTRIBUTE_LINE,
+  GIT_LFS_ATTRIBUTE_LINE,
+  gitDriverMain,
+  setupGit,
+  renderSetupRecap,
+  ensureGitattributes,
+} from "./git.ts";
 export type {
   Change,
   ChangeKind,

@@ -18,6 +18,7 @@ import { diffSummaryHasChanges } from "./diff/diff-model.ts";
 import { toFlpInfoJson } from "./presentation/flp-info.ts";
 import { renderInfo } from "./info.ts";
 import { renderCanonical } from "./canonical.ts";
+import { gitDriverMain, setupGit, renderSetupRecap, type Scope, type DriverMode } from "./git.ts";
 import { basename } from "node:path";
 
 const EXIT_IDENTICAL = 0;
@@ -25,9 +26,12 @@ const EXIT_DIFFERENCES = 1;
 const EXIT_ERROR = 2;
 
 const USAGE = `Usage:
-  flpdiff [--verbose] <A.flp> <B.flp>     Semantic diff between two FLPs
-  flpdiff info <file.flp> [--format F]    Inspect a single FLP
+  flpdiff [--verbose] <A.flp> <B.flp>         Semantic diff between two FLPs
+  flpdiff info <file.flp> [--format F]        Inspect a single FLP
     F ∈ text (default) | json | canonical
+  flpdiff git-setup [--global] [--textconv] [--lfs]
+                                              Configure git to use flpdiff as the FLP diff driver
+  flpdiff git-driver <...7 or 9 args...>      Internal: invoked by git's external-diff protocol
   flpdiff --help | --version
 
 Exit codes (diff):
@@ -64,9 +68,9 @@ export async function run(argv: readonly string[]): Promise<number> {
       case "info":
         return runInfo(rest);
       case "git-setup":
+        return runGitSetup(rest);
       case "git-driver":
-        console.error(`flpdiff: '${first}' is coming in Phase L2`);
-        return EXIT_ERROR;
+        return gitDriverMain(rest);
     }
   }
 
@@ -160,6 +164,37 @@ function sortedReplacer(_key: string, value: unknown): unknown {
     return sorted;
   }
   return value;
+}
+
+function runGitSetup(argv: readonly string[]): number {
+  const args = [...argv];
+  let scope: Scope = "local";
+  let mode: DriverMode = "command";
+  let lfs = false;
+  for (let i = args.length - 1; i >= 0; i--) {
+    const a = args[i];
+    if (a === "--global") {
+      args.splice(i, 1);
+      scope = "global";
+    } else if (a === "--textconv") {
+      args.splice(i, 1);
+      mode = "textconv";
+    } else if (a === "--lfs") {
+      args.splice(i, 1);
+      lfs = true;
+    }
+  }
+  if (args.length > 0) {
+    console.error(`flpdiff git-setup: unexpected argument: ${args[0]}`);
+    return EXIT_ERROR;
+  }
+  try {
+    const result = setupGit({ scope, mode, lfs });
+    console.log(renderSetupRecap(result));
+    return 0;
+  } catch (e) {
+    return handleError(e);
+  }
 }
 
 function handleError(e: unknown): number {
