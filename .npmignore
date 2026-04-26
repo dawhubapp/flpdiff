@@ -1,0 +1,42 @@
+# .npmignore — what to EXCLUDE from the npm tarball.
+#
+# Only src/ + README/LICENSE/CHANGELOG + package.json are shipped (see
+# `files` in package.json). This file is a belt-and-suspenders backup
+# in case the `files` whitelist misses something.
+
+# Dev tooling
+tests/
+tools/
+docs/
+.github/
+scripts/
+
+# Build artifacts
+dist/
+out/
+node_modules/
+*.tgz
+coverage/
+*.lcov
+
+# Tooling config
+.gitignore
+.gitattributes
+bun.lockb
+bun.lock
+tsconfig.json
+.editorconfig
+
+# IDE + OS cruft
+.idea/
+.vscode/
+.DS_Store
+*.swp
+
+# Python cruft (parity harness subprocess layer)
+__pycache__/
+*.pyc
+.venv/
+
+# Parity-gap tracker is dev-facing; not needed in the tarball
+docs/parity-gaps.md

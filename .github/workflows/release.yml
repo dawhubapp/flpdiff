@@ -1,0 +1,92 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write  # needed to create the GitHub Release + upload assets
+
+jobs:
+  # Build standalone binaries for each supported platform.
+  # bun build --compile can cross-target from a single host, so one
+  # matrix cell per target is enough; no per-OS runner required.
+  build-binaries:
+    name: Build ${{ matrix.target }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: bun-darwin-arm64
+            artifact: flpdiff-darwin-arm64
+          - target: bun-darwin-x64
+            artifact: flpdiff-darwin-x64
+          - target: bun-linux-x64
+            artifact: flpdiff-linux-x64
+          - target: bun-linux-arm64
+            artifact: flpdiff-linux-arm64
+          - target: bun-windows-x64
+            artifact: flpdiff-windows-x64.exe
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - run: bun install --frozen-lockfile
+      - name: Build standalone binary
+        run: |
+          mkdir -p dist
+          bun build src/cli.ts --compile --target=${{ matrix.target }} --outfile dist/${{ matrix.artifact }}
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: dist/${{ matrix.artifact }}
+          if-no-files-found: error
+          retention-days: 7
+
+  # Create a GitHub Release with the tag's name and attach all binaries.
+  github-release:
+    name: Publish GitHub Release
+    needs: build-binaries
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download all binaries
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ github.ref_name }}
+          generate_release_notes: true
+          files: |
+            dist/flpdiff-darwin-arm64
+            dist/flpdiff-darwin-x64
+            dist/flpdiff-linux-x64
+            dist/flpdiff-linux-arm64
+            dist/flpdiff-windows-x64.exe
+
+  # Publish to npm. Requires NPM_TOKEN repository secret.
+  npm-publish:
+    name: Publish to npm
+    needs: build-binaries
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          registry-url: "https://registry.npmjs.org"
+      - run: bun install --frozen-lockfile
+      - name: Publish
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
