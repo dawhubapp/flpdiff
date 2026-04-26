@@ -8,7 +8,7 @@ import {
   type ArrangementSummary,
 } from "../src/index.ts";
 
-const CORPUS_DIR = resolve(import.meta.dir, "../../tests/corpus/re_base/fl25");
+const CORPUS_DIR = resolve(import.meta.dir, "./corpus/re_base/fl25");
 
 async function summaryOf(name: string): Promise<ProjectSummary> {
   const buf = await Bun.file(resolve(CORPUS_DIR, name)).arrayBuffer();

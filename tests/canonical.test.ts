@@ -2,7 +2,7 @@ import { test, expect, describe } from "bun:test";
 import { resolve } from "node:path";
 import { parseFLPFile, renderCanonical, CANONICAL_HEADER } from "../src/index.ts";
 
-const CORPUS_DIR = resolve(import.meta.dir, "../../tests/corpus/re_base/fl25");
+const CORPUS_DIR = resolve(import.meta.dir, "./corpus/re_base/fl25");
 
 async function canonOf(name: string): Promise<string> {
   const buf = await Bun.file(resolve(CORPUS_DIR, name)).arrayBuffer();

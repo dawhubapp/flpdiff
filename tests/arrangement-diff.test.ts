@@ -269,7 +269,7 @@ describe("comparePattern", () => {
 
 describe("compareProjects — full orchestrator against real corpus pair", () => {
   test("dorn-girls.flp ↔ dorn-girls_2.flp produces Python-equivalent summary", () => {
-    const corpusDir = resolve(import.meta.dir, "../../tests/corpus/local/diff_pairs");
+    const corpusDir = resolve(import.meta.dir, "./corpus/local/diff_pairs");
     let a, b;
     try {
       a = parseFLPFile(readFileSync(resolve(corpusDir, "dorn-girls.flp")).buffer);

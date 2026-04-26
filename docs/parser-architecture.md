@@ -346,8 +346,5 @@ stored as `bpm × 1000 = 120000` uint32 LE) — all match Python's
 
 ## Cross-references
 
-- the spec → Epic 3, Phase 3.1 — overall plan
-- the spec the TS-port greenlight decision — greenlight decision for Epic 3
-- `ts/docs/flp-format-spec.md` — forthcoming, Phase 3.1.3
-- `tests/test_the reference parser_fl25.py` (dev repo) — Python-side regression tests that codify FL 25 event-format knowledge this TS parser must match
-- `docs/fl25-event-format.md` (dev repo) — existing FL 25 format observations; a clean-room input for the TS parser
+- `docs/fl-format/flp-format-spec.md` — clean-room FLP format spec
+- `docs/fl-format/fl25-event-format.md` — FL 25-specific event-format observations

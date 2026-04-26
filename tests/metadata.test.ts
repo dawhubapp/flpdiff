@@ -2,8 +2,8 @@ import { test, expect, describe } from "bun:test";
 import { resolve } from "node:path";
 import { parseFLPFile } from "../src/index.ts";
 
-const PUBLIC_CORPUS = resolve(import.meta.dir, "../../tests/corpus/re_base/fl25");
-const LOCAL_CORPUS = resolve(import.meta.dir, "../../tests/corpus/local");
+const PUBLIC_CORPUS = resolve(import.meta.dir, "./corpus/re_base/fl25");
+const LOCAL_CORPUS = resolve(import.meta.dir, "./corpus/local");
 
 async function metaOf(dir: string, name: string) {
   const buf = await Bun.file(resolve(dir, name)).arrayBuffer();

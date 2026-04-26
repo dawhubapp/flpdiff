@@ -38,7 +38,7 @@ sides to reproduce.
 If you've reverse-engineered an opcode, event layout, or FL-version
 quirk that `flpdiff` doesn't yet decode:
 
-1. **Document the format fact** in `docs/flp-format-spec.md` — opcode,
+1. **Document the format fact** in `docs/fl-format/flp-format-spec.md` — opcode,
    payload layout, observation method.
 2. **Decode it in `src/parser/project-builder.ts`** (or a dedicated
    decoder under `src/model/`).
@@ -47,7 +47,7 @@ quirk that `flpdiff` doesn't yet decode:
 4. **Clean-room discipline**: format facts (opcode numbers, payload
    shapes, enum values) are fine to cite. Code, class names, and
    internal data structure names from existing GPL libraries are
-   off-limits. See `docs/flp-format-spec.md` for the policy.
+   off-limits. See `docs/fl-format/flp-format-spec.md` for the policy.
 
 ## Tests
 

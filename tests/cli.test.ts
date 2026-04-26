@@ -9,7 +9,7 @@ import {
 import { run } from "../src/cli.ts";
 import { parseFLPFile } from "../src/index.ts";
 
-const CORPUS_DIR = resolve(import.meta.dir, "../../tests/corpus/re_base/fl25");
+const CORPUS_DIR = resolve(import.meta.dir, "./corpus/re_base/fl25");
 const BASE = resolve(CORPUS_DIR, "base_empty.flp");
 const OTHER = resolve(CORPUS_DIR, "base_one_channel.flp");
 

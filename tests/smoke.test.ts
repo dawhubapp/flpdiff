@@ -2,7 +2,7 @@ import { test, expect, describe } from "bun:test";
 import { resolve } from "node:path";
 import { parseFLPFile, getFLVersionBanner, getTempo } from "../src/index.ts";
 
-const CORPUS_DIR = resolve(import.meta.dir, "../../tests/corpus/re_base/fl25");
+const CORPUS_DIR = resolve(import.meta.dir, "./corpus/re_base/fl25");
 
 async function loadFLP(name: string): Promise<ArrayBuffer> {
   return await Bun.file(resolve(CORPUS_DIR, name)).arrayBuffer();
@@ -10,7 +10,7 @@ async function loadFLP(name: string): Promise<ArrayBuffer> {
 
 /**
  * Oracle values sourced from Python's `flp-info` output on each committed
- * FL 25 fixture (see the dev repo's tests/corpus/re_base/fl25/).
+ * FL 25 fixture (see the tests/corpus/re_base/fl25/).
  *
  * All five minimal bases currently share header values — the files differ
  * in their later event-stream contents (channels, patterns, inserts,

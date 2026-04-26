@@ -46,13 +46,12 @@ The TS implementation exists to deliver two wins:
 
 ## Principles
 
-- **No the reference parser source referenced** during parser development. Format
-  knowledge derives from `docs/flp-format-spec.md`, the dev repo's
-  harness notes, and direct byte inspection of committed fixtures.
-  the reference parser has been cross-checked a handful of times for **format facts
-  only** (never code); see the per-commit rationale and the "Clean-room
-  cross-checks" list in the auto-memory file
-  `project_epic_3_phase_3_1_3_2.md`.
+- **No GPL parser source referenced** during parser development.
+  Format knowledge derives from `docs/fl-format/flp-format-spec.md`,
+  the harness notes under `docs/fl-format/`, and direct byte
+  inspection of committed fixtures. Existing GPL libraries have been
+  cross-checked a handful of times for **format facts only** (opcode
+  numbers, payload shapes), never code or naming.
 - **Oracle testing** against Python's `flp-info --format json` is the
   correctness check. All five FL 25 public fixtures match on every
   decoded field (header, channels, patterns, inserts, arrangements).
@@ -61,11 +60,11 @@ The TS implementation exists to deliver two wins:
   errors with absolute byte offset, schema name, opcode, event index,
   nesting path, and a 16-byte hex-dump of preceding bytes. Not
   retrofitted.
-- **Four self-discovered FL 25 opcode relocations** documented in
-  `docs/flp-format-spec.md`: `0xEE` (track data from the reference parser's `0xDE`),
-  `0xE0` (pattern notes from `0xD0`), `0xDB` (channel Levels from
-  `0xCB`/`0xCF` overload), and `0xEC` (insert flags from `0xDC`). All
-  four fit the same `DATA + 16` offset pattern.
+- **Four FL 25 opcode relocations** documented in
+  `docs/fl-format/flp-format-spec.md`: `0xEE` (track data, was `0xDE`),
+  `0xE0` (pattern notes, was `0xD0`), `0xDB` (channel Levels, was
+  `0xCB`/`0xCF` overload), and `0xEC` (insert flags, was `0xDC`).
+  All four fit the same `DATA + 16` offset pattern.
 - **Parity-harness-driven corrections.** Running the Pass 1 parity
   harness (`tools/parity/run_parity.py`) against the 85-file local
   corpus caught three opcode mis-readings that the 5 public fixtures
@@ -175,8 +174,11 @@ ts/
 ├── tsconfig.json
 ├── docs/
 │   ├── parser-architecture.md   # typed-binary + custom-schemas + error infra
-│   ├── flp-format-spec.md       # clean-room FLP format spec (living catalog)
-│   └── flp-info-shape.md        # Pass-2 contract + full closure log
+│   ├── flp-info-shape.md        # Pass-2 contract + full closure log
+│   └── fl-format/               # FL binary format knowledge (symlinked from python/docs/)
+│       ├── flp-format-spec.md   # clean-room FLP format spec (living catalog)
+│       ├── fl25-event-format.md
+│       └── fl-scripting-notes.md
 ├── src/
 │   ├── index.ts                 # public exports (parseFLPFile, toFlpInfoJson, etc.)
 │   ├── cli.ts                   # flpdiff CLI

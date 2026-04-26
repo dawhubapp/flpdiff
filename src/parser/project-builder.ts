@@ -16,10 +16,9 @@ import { type Arrangement, type Track, type TimeMarker, decodeClips, decodeTimeM
 import { type ProjectMetadata, decodeTimestamp } from "../model/metadata.ts";
 
 /**
- * Opcode constants for the entity-boundary events. Each is a format fact
- * cross-referenced against the dev repo's `docs/fl25-event-format.md`
- * and the clean-room spec at `ts/docs/flp-format-spec.md`; naming here is
- * our own (not borrowed from the reference parser).
+ * Opcode constants for the entity-boundary events. Each is a format
+ * fact cross-referenced against `docs/fl-format/fl25-event-format.md`
+ * and the clean-room spec at `docs/fl-format/flp-format-spec.md`.
  */
 const OP_NEW_CHANNEL = 0x40;
 const OP_CHANNEL_TYPE = 0x15;

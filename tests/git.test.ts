@@ -204,7 +204,7 @@ describe("renderSetupRecap", () => {
 });
 
 describe("gitDriverMain — external-diff protocol shape", () => {
-  const CORPUS = resolve(import.meta.dir, "../../tests/corpus/re_base/fl25");
+  const CORPUS = resolve(import.meta.dir, "./corpus/re_base/fl25");
   const BASE = join(CORPUS, "base_empty.flp");
 
   test("rejects arg count that isn't 7 or 9", async () => {
