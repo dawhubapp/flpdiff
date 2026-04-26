@@ -3,7 +3,13 @@ import { decodeUtf16LeBytes, decodeUtf8Bytes } from "./primitives.ts";
 import { decodeVSTWrapper } from "./vst-wrapper.ts";
 import { type Channel, classifyChannelKind, unpackRGBA, decodeLevels } from "../model/channel.ts";
 // unpackRGBA is re-used for pattern color (0x96) — same byte packing as 0x80.
-import { type MixerInsert, type MixerSlot, decodeInsertFlags } from "../model/mixer-insert.ts";
+import {
+  type MixerInsert,
+  type MixerSlot,
+  type MixerParamRecord,
+  decodeInsertFlags,
+  decodeMixerParams,
+} from "../model/mixer-insert.ts";
 import { type Pattern, decodeNotes, decodeControllers } from "../model/pattern.ts";
 import { type Arrangement, type TimeMarker, decodeClips, decodeTimeMarkerPosition } from "../model/arrangement.ts";
 import { type ProjectMetadata, decodeTimestamp } from "../model/metadata.ts";
@@ -74,6 +80,20 @@ const OP_INSERT_INPUT = 0x9a;
  * 4 reserved + uint32 flags + 4 reserved.
  */
 const OP_INSERT_FLAGS = 0xec;
+/**
+ * Project-level MixerParams blob. Carries all per-insert /
+ * per-slot "MixerParams" records in a single payload. Record
+ * layout decoded by `decodeMixerParams` — each record's
+ * `channel_data` field packs `(insertIdx << 6) | slotIdx`.
+ * The walker collects all records and applies them post-walk.
+ */
+const OP_MIXER_PARAMS = 0xe1;
+/** MixerParams record IDs we surface in the project model. */
+const MP_SLOT_ENABLED = 0;
+const MP_SLOT_MIX = 1;
+const MP_INSERT_VOLUME = 192;
+const MP_INSERT_PAN = 193;
+const MP_INSERT_STEREO_SEP = 194;
 /** Int32 value indicating "no explicit routing" — stored as 0xFFFFFFFF (-1 signed). */
 const ROUTING_UNSET = 0xffffffff;
 /**
@@ -408,6 +428,14 @@ export function buildChannels(events: readonly FLPEvent[]): Channel[] {
  */
 export function buildMixerInserts(events: readonly FLPEvent[]): MixerInsert[] {
   const inserts: MixerInsert[] = [];
+  /**
+   * MixerParams records buffered during the walk for post-attribution.
+   * FL emits a single 0xE1 blob with records for ALL inserts/slots;
+   * we can't attribute them to `pendingInsert` as we go because the
+   * blob lands before most inserts exist. Collect, then apply after
+   * the walk.
+   */
+  let mixerParamsRecords: MixerParamRecord[] = [];
   let pendingInsert: MixerInsert = { index: 0, slots: [] };
   /**
    * Slot currently being *accumulated*. Unlike `pendingInsert`, this is
@@ -537,6 +565,38 @@ export function buildMixerInserts(events: readonly FLPEvent[]): MixerInsert[] {
       // companion `0xCB` name event.
       pendingSlot.hasPlugin = true;
       continue;
+    }
+    if (ev.opcode === OP_MIXER_PARAMS && ev.kind === "blob") {
+      // Buffer; applied post-walk.
+      mixerParamsRecords = decodeMixerParams(ev.payload);
+      continue;
+    }
+  }
+
+  // Apply MixerParams records to the built inserts. Each record has
+  // `insertIdx` (0..127) and `slotIdx` (0..63). The insertIdx fields
+  // we observe in the wild are sparse — FL stores records only for
+  // insert positions that actually exist, with sparse gaps.
+  //
+  // Insert mapping: our `inserts` array order is 0 = master, then
+  // visible inserts in the order their 0x93 events fired. FL's
+  // `insertIdx` in the channel_data field tracks the SAME
+  // enumeration; records whose insertIdx falls outside
+  // `[0, inserts.length)` are silently dropped (they target insert
+  // slots FL allocated but didn't surface via 0x93 — the sparse
+  // tail we don't model).
+  for (const rec of mixerParamsRecords) {
+    const ins = inserts[rec.insertIdx];
+    if (!ins) continue;
+    if (rec.id === MP_INSERT_VOLUME) ins.volume = rec.msg;
+    else if (rec.id === MP_INSERT_PAN) ins.pan = rec.msg;
+    else if (rec.id === MP_INSERT_STEREO_SEP) ins.stereoSeparation = rec.msg;
+    else if (rec.id === MP_SLOT_ENABLED) {
+      const slot = ins.slots[rec.slotIdx];
+      if (slot) slot.enabled = rec.msg !== 0;
+    } else if (rec.id === MP_SLOT_MIX) {
+      const slot = ins.slots[rec.slotIdx];
+      if (slot) slot.mix = rec.msg;
     }
   }
 

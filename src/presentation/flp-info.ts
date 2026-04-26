@@ -308,7 +308,10 @@ function toMixerSlot(slot: MixerSlot): MixerSlotJson {
   return {
     _type: "MixerSlot",
     index: slot.index,
-    enabled: true, // TS doesn't decode per-slot enabled from MixerParams yet
+    // Python defaults to `true` when the MixerParams record isn't present
+    // (see `flp_diff/parser.py::_parse_slot` — `bool(the safe-attr fallback(slot,
+    // "enabled", True))`). Match.
+    enabled: slot.enabled ?? true,
     plugin: slotPluginToJson(slot),
   };
 }
@@ -319,11 +322,22 @@ function toMixerInsert(ins: MixerInsert): MixerInsertJson {
     index: ins.index,
     name: ins.name ?? null,
     color: rgbaToJson(ins.color),
-    enabled: ins.flags?.enabled ?? true,
+    // The reference adapter returns None when the insert-flags
+    // event can't be parsed (e.g., FL 9's 5-byte payload vs the
+    // FL 25 12-byte layout). It then coerces via `bool(None) =
+    // False`. So on files where our decoder returned undefined —
+    // missing or malformed event — both enabled and locked should
+    // land as `false`, not the "normal" defaults true/false.
+    enabled: ins.flags?.enabled ?? false,
     locked: ins.flags?.locked ?? false,
-    pan: null, // TS doesn't decode insert pan/volume yet
-    volume: null,
-    stereo_separation: null,
+    // Python's adapter normalises: pan / 6400 clamped [-1, 1],
+    // volume / 12800, stereo_separation same as pan.
+    pan: ins.pan === undefined ? null : Math.max(-1, Math.min(1, ins.pan / 6400)),
+    volume: ins.volume === undefined ? null : ins.volume / 12800,
+    stereo_separation:
+      ins.stereoSeparation === undefined
+        ? null
+        : Math.max(-1, Math.min(1, ins.stereoSeparation / 6400)),
     slots: ins.slots.map(toMixerSlot),
     routes_to: [], // TS doesn't decode insert routing matrix yet
   };

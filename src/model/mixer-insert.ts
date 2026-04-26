@@ -19,6 +19,18 @@ export type MixerSlot = {
    * saved without a display name); those still count as "filled".
    */
   hasPlugin?: boolean;
+  /**
+   * Per-slot enabled flag from `0xE1` MixerParams records with `id
+   * = 0` (SlotEnabled). Python defaults to `true` when the record
+   * isn't present; we match.
+   */
+  enabled?: boolean;
+  /**
+   * Per-slot dry/wet mix from `0xE1` MixerParams records with `id
+   * = 1` (SlotMix). Raw int (`-6400..6400`), presentation layer
+   * normalises to Python's float space.
+   */
+  mix?: number;
 };
 
 /**
@@ -167,6 +179,21 @@ export type MixerInsert = {
    * every insert in FL 25's default save output.
    */
   flags?: InsertFlags;
+  /**
+   * Insert-level MixerParams values, sourced from records in the
+   * project-level `0xE1` blob with `channel_data = (insertIdx << 6) |
+   * slotIdx`. When the `id` byte matches one of the catalogued
+   * MixerParams IDs, the 32-bit signed `msg` lands here as a raw int.
+   * Presentation layer normalises to Python's float space (pan / 6400,
+   * volume / 12800).
+   *
+   * `pan`: id 193, raw `-6400..6400` (centre 0).
+   * `volume`: id 192, raw `0..12800` (default 0).
+   * `stereoSeparation`: id 194 — same range as pan.
+   */
+  pan?: number;
+  volume?: number;
+  stereoSeparation?: number;
   /**
    * Effect slots on this insert, in declaration order. FL 25 always
    * emits 10 slots per insert; empty slots have `pluginName === undefined`.
