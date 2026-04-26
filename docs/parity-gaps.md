@@ -4,17 +4,30 @@ Tracks the known deltas between `flpdiff-ts` (Phase 3.4 port) and the
 Python `flpdiff` CLI's text output. Run the harness at
 `ts/tools/parity/run_diff_parity.py <corpus-dir>` to refresh.
 
-## Summary (as of Phase 3.4.4 landing)
+## Summary
 
 | Corpus scope | MATCH | DIFF | ERROR | Notes |
 |--------------|-------|------|-------|-------|
-| `tests/corpus/local/diff_pairs/` | **1** | **1** | 0 | One known pre-existing gap (Kickstart VST vendor — see below). |
+| `tests/corpus/local/diff_pairs/` | **5** | **1** | 0 | One known pre-existing gap (Kickstart VST vendor — see below). |
 
-Across all renderable text, `renderSummary` produces output that
-MD5-matches Python's `flpdiff --format text --no-color` for every
+Across all 6 pairs, 5 produce output that MD5-matches Python's
+`flpdiff --format text --no-color` byte-for-byte. Matched pairs span
+FL 20 / 24 / 25 projects with real-world content — vocals, drum
+chops, keyboard bounces, multi-bar arrangements — exercising every
 entity family we've decoded (metadata, channels, patterns, mixer
 inserts, arrangement tracks with clip-collapse groups, automation
 keyframes, per-note diff with bucket-summarisation).
+
+### Per-pair detail
+
+| Pair | py md5 | ts md5 | Status |
+|------|--------|--------|--------|
+| `dorn-girls.flp` ↔ `dorn-girls_2.flp` | `f1254ddc` | `f1254ddc` | ✅ MATCH |
+| `edz_chords_10.flp` ↔ `edz_chords_28.flp` | `36612c73` | `36612c73` | ✅ MATCH |
+| `h1_86.flp` ↔ `h1_86_98.flp` | `c989f55d` | `a6b030ed` | ⚠ Kickstart vendor (see below) |
+| `italo_bass_pop_15.flp` ↔ `italo_bass_pop_18.flp` | `4517ad63` | `4517ad63` | ✅ MATCH |
+| `j1_6.flp` ↔ `j1_7.flp` | `03d5444a` | `03d5444a` | ✅ MATCH |
+| `phlegma_dogs_10.flp` ↔ `phlegma_dogs_9.flp` | `c541fda5` | `c541fda5` | ✅ MATCH |
 
 ## Known gaps
 
