@@ -90,9 +90,46 @@ describe("CLI — end-to-end", () => {
   });
 
   test("exits 2 on malformed file", async () => {
-    const bogus = "/tmp/flpdiff-ts-bogus.flp";
+    const bogus = "/tmp/flpdiff-bogus.flp";
     await Bun.write(bogus, new Uint8Array([0x00, 0x01, 0x02, 0x03]));
     const code = await run([bogus, bogus]);
+    expect(code).toBe(2);
+  });
+
+  test("--version prints version and exits 0", async () => {
+    const code = await run(["--version"]);
+    expect(code).toBe(0);
+  });
+
+  test("--help prints usage and exits 0", async () => {
+    const code = await run(["--help"]);
+    expect(code).toBe(0);
+  });
+});
+
+describe("CLI — info subcommand", () => {
+  test("info <file> exits 0 with a human-readable report", async () => {
+    const code = await run(["info", BASE]);
+    expect(code).toBe(0);
+  });
+
+  test("info --format json exits 0", async () => {
+    const code = await run(["info", BASE, "--format", "json"]);
+    expect(code).toBe(0);
+  });
+
+  test("info rejects unknown format", async () => {
+    const code = await run(["info", BASE, "--format", "xml"]);
+    expect(code).toBe(2);
+  });
+
+  test("info canonical is Phase L2 — exits 2 with note for now", async () => {
+    const code = await run(["info", BASE, "--format", "canonical"]);
+    expect(code).toBe(2);
+  });
+
+  test("info without file prints usage + exits 2", async () => {
+    const code = await run(["info"]);
     expect(code).toBe(2);
   });
 });

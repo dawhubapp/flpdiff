@@ -1,6 +1,6 @@
 # Diff-engine parity gaps
 
-Tracks the known deltas between `flpdiff-ts` (Phase 3.4 port) and the
+Tracks the known deltas between the TS `flpdiff` (Phase 3.4 port) and the
 Python `flpdiff` CLI's text output. Run the harness at
 `ts/tools/parity/run_diff_parity.py <corpus-dir>` to refresh.
 

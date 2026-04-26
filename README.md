@@ -1,4 +1,4 @@
-# flpdiff-ts
+# flpdiff
 
 TypeScript port of [flpdiff](https://github.com/pronskiy/flpdiff).
 
@@ -170,7 +170,7 @@ Plus standalone helpers:
 
 ```
 ts/
-├── package.json           # flpdiff-ts, bun + typed-binary
+├── package.json           # flpdiff, bun + typed-binary
 ├── tsconfig.json
 ├── docs/
 │   ├── parser-architecture.md   # typed-binary + custom-schemas + error infra
@@ -178,7 +178,7 @@ ts/
 │   └── flp-info-shape.md        # Pass-2 contract + full closure log
 ├── src/
 │   ├── index.ts                 # public exports (parseFLPFile, toFlpInfoJson, etc.)
-│   ├── cli.ts                   # flpdiff-ts CLI
+│   ├── cli.ts                   # flpdiff CLI
 │   ├── summary.ts               # buildProjectSummary (Pass-1 oracle projection)
 │   ├── model/
 │   │   ├── channel.ts           # Channel, Levels, RGBA, ChannelPlugin, AutomationPoint
@@ -302,7 +302,7 @@ FL 25   8/8   ✅
 ```
 
 **Diff parity** (rendered text, Phase 3.4.4): runs Python's installed
-`flpdiff --format text --no-color` and the TS `flpdiff-ts` CLI on
+`flpdiff --format text --no-color` and the TS `flpdiff` CLI on
 every pair under `tests/corpus/local/diff_pairs/` (auto-discovered
 by longest common stem prefix) and MD5-compares the output.
 
@@ -381,7 +381,7 @@ single documented DIFF and the stubbed opaque-plugin-state branch.
   diff, DiffResult orchestrator, summary formatter.
 - `renderSummary` output **MD5-identical** to Python's `flpdiff
   --format text --no-color` on 5 of 6 real-world corpus diff pairs.
-- `flpdiff-ts A.flp B.flp [--verbose]` CLI runs the full semantic
+- `flpdiff A.flp B.flp [--verbose]` CLI runs the full semantic
   diff with clip-collapse grouping.
 
 ## For the next session

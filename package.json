@@ -1,12 +1,12 @@
 {
-  "name": "flpdiff-ts",
-  "version": "0.0.0",
-  "description": "TypeScript port of flpdiff (Epic 3 side-build) — clean-room FLP parser + browser-native diff viewer",
+  "name": "flpdiff",
+  "version": "0.1.0",
+  "description": "Clean-room FL Studio (.flp) parser + semantic diff — no Python, no install prerequisites.",
   "type": "module",
   "private": true,
   "module": "src/index.ts",
   "bin": {
-    "flpdiff-ts": "src/cli.ts"
+    "flpdiff": "src/cli.ts"
   },
   "scripts": {
     "test": "bun test",
