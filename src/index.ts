@@ -123,3 +123,5 @@ export {
   pythonGFormat,
   diffNotes,
 } from "./diff/note-diff.ts";
+export type { AutomationPointJson } from "./diff/automation-diff.ts";
+export { diffAutomationPoints } from "./diff/automation-diff.ts";
