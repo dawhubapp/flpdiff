@@ -138,7 +138,7 @@ type FLVersionJson = {
   major: number;
   minor: number;
   patch: number;
-  build: number;
+  build: number | null;
 };
 
 type TimeSignatureJson = {
@@ -271,7 +271,10 @@ function slotPluginToJson(slot: MixerSlot): PluginJson | null {
 
 function toChannel(ch: Channel): ChannelJson {
   // FL default pan/volume when no Levels event: pan=6400 (centre), volume=10000.
-  const pan = (ch.levels?.pan ?? 6400) / 6400;
+  // Python's pan-normalisation clamps to [-1, 1]; FL occasionally
+  // stores values outside that range (raw 8425 observed — clamps
+  // to 1.0).
+  const pan = Math.max(-1, Math.min(1, (ch.levels?.pan ?? 6400) / 6400));
   const volume = (ch.levels?.volume ?? 10000) / 12800;
   return {
     _type: "Channel",
@@ -328,10 +331,14 @@ function toMixerSlot(slot: MixerSlot): MixerSlotJson {
   return {
     _type: "MixerSlot",
     index: slot.index,
-    // Python defaults to `true` when the MixerParams record isn't present
-    // (see `flp_diff/parser.py::_parse_slot` — `bool(the safe-attr fallback(slot,
-    // "enabled", True))`). Match.
-    enabled: slot.enabled ?? true,
+    // Python always reports `enabled: true` here, regardless of the
+    // SlotEnabled MixerParams record value — a quirk of the
+    // reference adapter: the lookup misses on the slot's params and
+    // a fallback in the reference adapter substitutes `True`. Our
+    // parser decodes the record faithfully (`slot.enabled` reflects
+    // the real bit), but the presentation layer hard-codes `true`
+    // to match Python's wire output.
+    enabled: true,
     plugin: slotPluginToJson(slot),
   };
 }
@@ -440,7 +447,7 @@ function toMetadata(project: FLPProject, tempo: number): MetadataJson {
     time_spent: timedeltaToJson(m.timeSpent),
     version: m.version
       ? { _type: "FLVersion", ...m.version }
-      : { _type: "FLVersion", major: 0, minor: 0, patch: 0, build: 0 },
+      : { _type: "FLVersion", major: 0, minor: 0, patch: 0, build: null },
   };
 }
 

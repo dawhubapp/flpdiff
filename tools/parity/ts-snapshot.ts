@@ -43,7 +43,7 @@ function snapshot(path: string): Snapshot {
     0,
   );
   const tracks_total = project.arrangements.reduce(
-    (a, arr) => a + arr.trackCount,
+    (a, arr) => a + arr.tracks.length,
     0,
   );
   const clips_total = project.arrangements.reduce(

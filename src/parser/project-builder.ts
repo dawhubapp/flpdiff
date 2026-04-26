@@ -191,15 +191,16 @@ const OP_PROJECT_FL_BUILD = 0x9f; // DWORD+31, uint32 LE
 const OP_PROJECT_TIMESTAMP = 0xed; // DATA+29, 16-byte the timestamp event class (2× float64 LE)
 
 function parseFlVersionAscii(value: string): ProjectMetadata["version"] | undefined {
-  // Python: `FLVersion(*tuple(int(p) for p in event.value.split('.')))`.
-  // Format is either "A.B.C" (build=None) or "A.B.C.D".
+  // Format is either "A.B.C" (build=null default) or "A.B.C.D".
+  // Normalize missing build → null; the 0x9F FL-build fallback can
+  // still upgrade it when present.
   const parts = value.split(".").map((p) => Number(p));
   if (parts.length < 3 || parts.some((n) => !Number.isFinite(n))) return undefined;
   return {
     major: parts[0]!,
     minor: parts[1]!,
     patch: parts[2]!,
-    build: parts.length >= 4 ? parts[3]! : 0,
+    build: parts.length >= 4 ? parts[3]! : null,
   };
 }
 
@@ -278,7 +279,7 @@ export function buildMetadata(events: readonly FLPEvent[]): ProjectMetadata {
   }
   // If the 0xC7 FL-version string lacked a 4th (build) component,
   // fall back to the 0x9F FL-build uint32 when present.
-  if (out.version !== undefined && out.version.build === 0 && flBuild !== undefined) {
+  if (out.version !== undefined && out.version.build === null && flBuild !== undefined) {
     out.version = { ...out.version, build: flBuild };
   }
   return out;
@@ -543,17 +544,13 @@ export function buildMixerInserts(
       }
       // Final slot flush at insert close. Two layout regimes:
       //  - FL 25 (10 0x62 markers per insert): the last 0x62 opened
-      //    slot 9; 0x93 closes it. firstSlotSeen is true, so push
-      //    unconditionally.
+      //    slot 9; 0x93 closes it. firstSlotSeen is true, so push.
       //  - FL 9 (zero 0x62 markers): firstSlotSeen never flipped.
-      //    pendingSlot is the one catch-all slot the reference parser's divide would
-      //    yield. Push only if it carries any plugin signal — otherwise
-      //    the insert genuinely has no slots.
-      if (firstSlotSeen) {
-        pendingInsert.slots.push(pendingSlot);
-      } else if (pendingSlot.hasPlugin === true || pendingSlot.pluginName !== undefined) {
-        pendingInsert.slots.push(pendingSlot);
-      }
+      //    The reference parser's slot-divide step still yields one
+      //    catch-all group at end of loop regardless of whether any
+      //    plugin events landed in it — so we push pendingSlot too,
+      //    empty or not.
+      pendingInsert.slots.push(pendingSlot);
       inserts.push(pendingInsert);
       pendingInsert = { index: inserts.length, slots: [] };
       pendingSlot = { index: 0 };

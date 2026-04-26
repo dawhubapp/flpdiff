@@ -24,8 +24,13 @@ export type ProjectMetadata = {
    * project hasn't been saved somewhere with a custom data folder.
    */
   dataPath?: string;
-  /** FL version recovered from `the FL-version event = TEXT + 7 = 0xC7`. */
-  version?: { major: number; minor: number; patch: number; build: number };
+  /**
+   * FL version recovered from opcode `0xC7` (ASCII `A.B.C` or
+   * `A.B.C.D`). `build` is `null` when the version string has only
+   * three components (pre-FL-4 convention) and no `0x9F` build event
+   * supplies a fallback.
+   */
+  version?: { major: number; minor: number; patch: number; build: number | null };
   /** Loop-playback flag. Opcode `0x09`. */
   looped?: boolean;
   /** Show-project-info-on-open flag. Opcode `0x0A`. */
