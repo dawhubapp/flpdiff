@@ -97,7 +97,23 @@ export {
   matchTracks,
   matchArrangements,
   matchProjects,
+  pairByKey,
   isMatched,
   isAdded,
   isRemoved,
 } from "./diff/matcher.ts";
+export {
+  classify,
+  fmtNoneFriendly,
+  pythonFloatRepr,
+  fmtPct,
+  fmtPan,
+  fmtTimeSig,
+  fmtBool,
+  colorHex,
+  scalarChange,
+  compareMetadata,
+  compareChannel,
+  compareProjectsJson,
+  compareProjects,
+} from "./diff/comparator.ts";

@@ -65,7 +65,7 @@ export function isRemoved<T>(m: Match<T>): m is { old: T; new: null; confidence:
  * keys like `[kind, name]` tuples work naturally (Python uses
  * `Hashable`; TS has no built-in equivalent for arrays).
  */
-function pairByKey<T>(
+export function pairByKey<T>(
   a: readonly T[],
   b: readonly T[],
   primaryKey: (x: T) => string | number,
