@@ -123,9 +123,24 @@ describe("CLI — info subcommand", () => {
     expect(code).toBe(2);
   });
 
-  test("info canonical is Phase L2 — exits 2 with note for now", async () => {
-    const code = await run(["info", BASE, "--format", "canonical"]);
-    expect(code).toBe(2);
+  test("info canonical exits 0 + output starts with the header line", async () => {
+    // Redirect stdout so we can assert on the content.
+    const origWrite = Bun.write;
+    const chunks: string[] = [];
+    // @ts-expect-error — test-only override
+    Bun.write = (target: unknown, content: string | Uint8Array) => {
+      if (target === Bun.stdout && typeof content === "string") chunks.push(content);
+      return content.length;
+    };
+    try {
+      const code = await run(["info", BASE, "--format", "canonical"]);
+      expect(code).toBe(0);
+      const out = chunks.join("");
+      expect(out.startsWith("# flpdiff canonical v1\n")).toBe(true);
+      expect(out.endsWith("\n")).toBe(true);
+    } finally {
+      Bun.write = origWrite;
+    }
   });
 
   test("info without file prints usage + exits 2", async () => {

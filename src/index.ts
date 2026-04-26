@@ -49,6 +49,8 @@ export type {
 export { buildProjectSummary } from "./summary.ts";
 export type { FlpInfoJson } from "./presentation/flp-info.ts";
 export { toFlpInfoJson } from "./presentation/flp-info.ts";
+export { renderInfo } from "./info.ts";
+export { renderCanonical, CANONICAL_HEADER } from "./canonical.ts";
 export type {
   Change,
   ChangeKind,

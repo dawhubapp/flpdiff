@@ -17,6 +17,7 @@ import { renderSummary } from "./diff/summary.ts";
 import { diffSummaryHasChanges } from "./diff/diff-model.ts";
 import { toFlpInfoJson } from "./presentation/flp-info.ts";
 import { renderInfo } from "./info.ts";
+import { renderCanonical } from "./canonical.ts";
 import { basename } from "node:path";
 
 const EXIT_IDENTICAL = 0;
@@ -133,8 +134,10 @@ async function runInfo(argv: readonly string[]): Promise<number> {
       // flp_diff.serialization.to_json.
       console.log(JSON.stringify(toFlpInfoJson(project), sortedReplacer, 2));
     } else if (format === "canonical") {
-      console.error("flpdiff info --format=canonical is coming in Phase L2 (textconv support)");
-      return EXIT_ERROR;
+      // Use stdout.write to avoid double-newline — renderCanonical
+      // already terminates with a trailing newline, and git's textconv
+      // driver captures stdout verbatim.
+      Bun.write(Bun.stdout, renderCanonical(project));
     } else {
       console.log(renderInfo(project, path));
     }
