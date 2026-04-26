@@ -20,6 +20,19 @@ export type MixerSlot = {
    */
   hasPlugin?: boolean;
   /**
+   * Plugin internal name — `0xC9` in slot scope. For VSTs this is
+   * `"Fruity Wrapper"`; for natives it's the display name (same as
+   * `pluginName` typically). When `internalName === "Fruity Wrapper"`,
+   * the `0xD5` state blob carries the VST's real name / vendor /
+   * path in the FL wrapper record stream (decoded into
+   * `pluginVstName` / `pluginVendor`).
+   */
+  internalName?: string;
+  /** Real VST display name extracted from the 0xD5 wrapper blob (id=54). */
+  pluginVstName?: string;
+  /** Real VST vendor extracted from the 0xD5 wrapper blob (id=56). */
+  pluginVendor?: string;
+  /**
    * Per-slot enabled flag from `0xE1` MixerParams records with `id
    * = 0` (SlotEnabled). Python defaults to `true` when the record
    * isn't present; we match.

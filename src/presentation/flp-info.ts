@@ -237,18 +237,31 @@ function pluginToJson(plugin: ChannelPlugin | undefined): PluginJson | null {
   };
 }
 
-/** Slot-level plugin: TS currently only tracks `pluginName` (display) and
- *  `hasPlugin` (0xD5 presence). If the slot has any plugin signal, emit
- *  a Plugin object; otherwise null. `is_vst` defaults to false (slot VST
- *  detection is TBD parser work). */
+/**
+ * Slot-level plugin projection. VST-hosted slots
+ * (`internalName === "Fruity Wrapper"`) promote the wrapper-blob
+ * name over the wrapper tag, same rule as channel-hosted VSTs
+ * (see `pluginToJson`).
+ */
 function slotPluginToJson(slot: MixerSlot): PluginJson | null {
-  if (!slot.hasPlugin && slot.pluginName === undefined) return null;
-  const name = slot.pluginName ?? "";
-  const isVst = name === "Fruity Wrapper";
+  if (!slot.hasPlugin && slot.pluginName === undefined && slot.internalName === undefined) {
+    return null;
+  }
+  const isVst = slot.internalName === "Fruity Wrapper";
+  // Python's resolution order for the slot plugin's name:
+  //   1. slot display name (`0xCB`, user "rename")
+  //   2. VST hosted product name (wrapper blob)
+  //   3. internal name (`0xC9`)
+  //   4. class-level fallback (for typed plugins we don't mirror)
+  //   5. generic plugin-base fallback
+  let name = slot.pluginName;
+  if (!name && isVst && slot.pluginVstName !== undefined) name = slot.pluginVstName;
+  if (!name && slot.internalName !== undefined) name = slot.internalName;
+  if (!name) name = "";
   return {
     _type: "Plugin",
     name,
-    vendor: null,
+    vendor: isVst ? slot.pluginVendor ?? null : null,
     is_vst: isVst,
     state: null,
   };
@@ -370,7 +383,11 @@ function toTrack(t: Arrangement["tracks"][number]): TrackJson {
     index: (t.iid && t.iid !== 0) ? t.iid : t.index + 1,
     name: t.name ?? null,
     color: rgbaToJson(t.color),
-    height: t.height ?? 1.0,
+    // The reference adapter stringifies the raw track height as
+    // `str(int(raw*100)) + '%'`, then re-parses "125%" back to 1.25.
+    // The int() truncation quantises to 1% increments, so raw
+    // 1.0096 → "100%" → 1.0. Apply the same quantisation here.
+    height: t.height === undefined ? 1.0 : Math.trunc(t.height * 100) / 100,
     // Python defines `muted` as `not enabled`. Our `enabled` decodes
     // from the track blob byte 12; default when absent is `true` →
     // `muted = false`.

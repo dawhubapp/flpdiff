@@ -478,7 +478,11 @@ export function buildChannels(
  * uncovers an insert opcode that shares bytes with a channel opcode,
  * the same scope pattern used for 0xCB can be extended here.
  */
-export function buildMixerInserts(events: readonly FLPEvent[]): MixerInsert[] {
+export function buildMixerInserts(
+  events: readonly FLPEvent[],
+  metadata?: ProjectMetadata,
+): MixerInsert[] {
+  const legacy = isLegacyText(metadata);
   const inserts: MixerInsert[] = [];
   /**
    * MixerParams records buffered during the walk for post-attribution.
@@ -610,7 +614,17 @@ export function buildMixerInserts(events: readonly FLPEvent[]): MixerInsert[] {
       inMixerSection &&
       pendingSlot.pluginName === undefined
     ) {
-      pendingSlot.pluginName = decodeUtf16LeBytes(ev.payload);
+      pendingSlot.pluginName = decodeTextEvent(ev.payload, legacy);
+      continue;
+    }
+    if (
+      ev.opcode === OP_PLUGIN_INTERNAL_NAME &&
+      ev.kind === "blob" &&
+      inMixerSection &&
+      pendingSlot.internalName === undefined
+    ) {
+      const n = decodeTextEvent(ev.payload, legacy);
+      if (n.length > 0) pendingSlot.internalName = n;
       continue;
     }
     if (ev.opcode === OP_PLUGIN_STATE && ev.kind === "blob" && inMixerSection) {
@@ -619,6 +633,17 @@ export function buildMixerInserts(events: readonly FLPEvent[]): MixerInsert[] {
       // subtree. Captures native plugins that emit `0xD5` without a
       // companion `0xCB` name event.
       pendingSlot.hasPlugin = true;
+      // If the slot is VST-hosted (`Fruity Wrapper`), extract the
+      // real VST name/vendor from the wrapper record stream. Mirrors
+      // what buildChannels does for channel-hosted VSTs.
+      if (
+        pendingSlot.internalName === "Fruity Wrapper" &&
+        pendingSlot.pluginVstName === undefined
+      ) {
+        const info = decodeVSTWrapper(ev.payload);
+        if (info.name !== undefined) pendingSlot.pluginVstName = info.name;
+        if (info.vendor !== undefined) pendingSlot.pluginVendor = info.vendor;
+      }
       continue;
     }
     if (ev.opcode === OP_MIXER_PARAMS && ev.kind === "blob") {

@@ -94,7 +94,7 @@ export function parseFLPFile(buffer: ArrayBufferLike): FLPProject {
 
     const metadata = buildMetadata(events);
     const channels = buildChannels(events, metadata);
-    const inserts = buildMixerInserts(events);
+    const inserts = buildMixerInserts(events, metadata);
     const patterns = buildPatterns(events);
     const arrangements = buildArrangements(events, channels, patterns);
     return { header, events, metadata, channels, inserts, patterns, arrangements };
