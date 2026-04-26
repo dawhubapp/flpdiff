@@ -70,10 +70,13 @@ describe("CLI — end-to-end", () => {
     expect(code).toBe(0);
   });
 
-  test("exits 0 for two fixtures with identical headlines", async () => {
-    // All five FL25 public fixtures share headline values.
+  test("exits 1 when two fixtures differ semantically", async () => {
+    // As of Phase 3.4.4 the CLI runs a full semantic diff, not a
+    // headline-only check. BASE and OTHER have the same headline
+    // (version/tempo/ppq) but different channel/mixer content, so
+    // the full diff fires and exits 1.
     const code = await run([BASE, OTHER]);
-    expect(code).toBe(0);
+    expect(code).toBe(1);
   });
 
   test("exits 2 with missing arguments", async () => {

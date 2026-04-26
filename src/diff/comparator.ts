@@ -482,7 +482,7 @@ function comparePlugin(
  * properties only in this commit — automation-points diff and opaque
  * plugin-state land in 3.4.2d / 3.4.2e respectively.
  */
-export function compareChannel(match: Match<ChannelJson>): ChannelDiff {
+export function compareChannel(match: Match<ChannelJson>, ppq = 96): ChannelDiff {
   if (match.old === null && match.new !== null) {
     return makeChannelDiff({
       identity: ["channel", match.new.iid],
@@ -597,8 +597,22 @@ export function compareChannel(match: Match<ChannelJson>): ChannelDiff {
   const pluginChanges = comparePlugin(`${path}.plugin`, oldCh.plugin, newCh.plugin);
   changes.push(...pluginChanges);
 
-  // Python uses "changes" (plural) always, even for count=1. Mirror.
-  const nTotal = changes.length;
+  // Automation-channel keyframe diff. Python's compare_channel only
+  // fires diff_automation_points when both sides are kind==="automation";
+  // we mirror that exactly so a channel that changed kind doesn't try
+  // to diff points that no longer represent the same curve.
+  const automationChanges =
+    oldCh.kind === "automation" && newCh.kind === "automation"
+      ? diffAutomationPoints(
+          oldCh.automation_points as import("./automation-diff.ts").AutomationPointJson[],
+          newCh.automation_points as import("./automation-diff.ts").AutomationPointJson[],
+          ppq,
+        )
+      : [];
+
+  // Python uses "changes" (plural) always, and counts the automation
+  // keyframe changes in the entity label total.
+  const nTotal = changes.length + automationChanges.length;
   const label =
     nTotal > 0
       ? `Channel ${channelLabel(oldCh)} modified (${nTotal} changes)`
@@ -610,6 +624,7 @@ export function compareChannel(match: Match<ChannelJson>): ChannelDiff {
     name: oldCh.name,
     humanLabel: label,
     changes,
+    automationChanges,
   });
 }
 
@@ -785,7 +800,7 @@ export function compareProjectsJson(oldJson: FlpInfoJson, newJson: FlpInfoJson):
   );
   const channelChanges: ChannelDiff[] = [];
   for (const m of channelMatches) {
-    const d = compareChannel(m);
+    const d = compareChannel(m, ppq);
     if (d.kind === "added" || d.kind === "removed" || d.changes.length > 0 || d.automationChanges.length > 0) {
       channelChanges.push(d);
     }

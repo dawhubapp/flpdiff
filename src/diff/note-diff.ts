@@ -96,18 +96,36 @@ function noteDescription(note: NoteJson, ppq: number): string {
 }
 
 /**
- * Approximate Python's `{:g}` float format: shortest representation
- * without unnecessary trailing zeros or a trailing `.0`. Integer
- * values render bare (`3`), fractional values as natural decimal
- * (`3.25`). Matches Python's output on every case we exercise in
- * note_diff labels.
+ * Python's `{:g}` float format: up to 6 significant digits, strip
+ * insignificant trailing zeros, omit the decimal point for integers.
+ *
+ * Uses **banker's rounding** (IEEE round-to-nearest-ties-to-even) to
+ * match Python. JS's `.toPrecision()` uses half-up on `.5` ties
+ * (`16.53125 → "16.5313"`), which differs from Python's `16.5312`.
+ *
+ * Examples:
+ *   0.3018341064453125 → "0.301834"    (truncated to 6 sig figs)
+ *   16.53125           → "16.5312"     (banker's: 12.5 → 12, not 13)
+ *   3.25               → "3.25"         (exact, no trailing zeros)
+ *   3.0                → "3"            (decimal point dropped)
+ *   62.010416666666664 → "62.0104"      (6 sig figs)
  */
 export function pythonGFormat(n: number): string {
   if (Number.isInteger(n)) return String(n);
-  // Python's {:g} uses up to 6 significant digits; for our domain
-  // (beat positions like 3.25, 62.5, 40.146) the natural JS string
-  // is the same or closer. Strip trailing zeros.
-  return String(n);
+  if (n === 0) return "0";
+  const exp = Math.floor(Math.log10(Math.abs(n)));
+  const mult = Math.pow(10, 5 - exp); // 6 sig figs total
+  const rounded = bankersRound(n * mult) / mult;
+  return String(rounded);
+}
+
+function bankersRound(x: number): number {
+  const floor = Math.floor(x);
+  const frac = x - floor;
+  if (frac < 0.5) return floor;
+  if (frac > 0.5) return floor + 1;
+  // Exactly 0.5: round to even (ties-to-even).
+  return floor % 2 === 0 ? floor : floor + 1;
 }
 
 // --------------------------------------------------------------------- //
