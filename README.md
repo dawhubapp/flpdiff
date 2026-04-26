@@ -117,9 +117,10 @@ opcode is present):
 
 | Entity           | Fields |
 |------------------|--------|
-| ProjectMetadata  | title, artists, genre, comments, url, dataPath, version (major/minor/patch/build), looped, showInfo, mainPitch, createdOn, timeSpent |
+| ProjectMetadata  | title, artists, genre, comments, url, dataPath, version (major/minor/patch/build), looped, showInfo, mainPitch, createdOn, timeSpent, timeSignatureNumerator, timeSignatureDenominator, panLaw, mainVolume |
 | Channel          | iid, kind, name, sample_path, plugin (internalName/name/vendor), color (RGBA), levels (pan/volume/pitch_shift/filter_mod_x/y/type), enabled, pingPongLoop, locked, zipped, targetInsert, automationPoints |
 | MixerInsert      | index, name, color, icon, output, input, pan/volume/stereoSeparation (from MixerParams), flags (11 named booleans), slots |
+| FLPProject top-level | insertRouting (project-wide 0xE7 bool stream, paired with MixerParams RouteVolStart records) |
 | MixerSlot        | index, pluginName, internalName, pluginVstName, pluginVendor, hasPlugin, enabled, mix |
 | Pattern          | id, name, length, color, looped, notes (14-field records incl. raw `flags` + derived `slide`), controllers |
 | Arrangement      | id, name, tracks (full Track[] with iid/color/icon/enabled/height/locked/name), clips, timemarkers (marker or signature kind) |
@@ -255,17 +256,20 @@ FL 25   8/8   ✅
 
 ## Known open format work
 
-1. **MixerParams sparse-insert-idx mapping** — `0xE1` records use
-   indices like `0, 53, 64..80` that don't map 1:1 to visible insert
-   indices 0..17. Raw decoder ships (`decodeMixerParams`); attribution
-   to `MixerInsert.slots[].enabled/mix` awaits mapping work.
-3. **Clip-bearing fixtures** — no committed fixture emits `0xE9`
+1. **Clip-bearing fixtures** — no committed fixture emits `0xE9`
    playlist clips or `0x94` time-markers; decoders are unit-tested via
    crafted payloads and will activate automatically when a fixture
    exercises them.
-4. **Zipped-channel end-to-end fixture** — `0x0F` BoolEvent decoder is
+2. **Zipped-channel end-to-end fixture** — `0x0F` BoolEvent decoder is
    live (`Channel.zipped`), but none of the 85 corpus files has a
    collapsed channel to exercise the "true" branch.
+3. **Per-insert routing projection** — the project-level
+   `FLPProject.insertRouting` bit-stream is decoded faithfully, but
+   pairing each flag with its corresponding MixerParams
+   RouteVolStart record (the reference parser's per-insert route iteration semantics) to
+   produce a `routes_to: number[]` per insert is deferred. Python's
+   `flp-info` emits `routes_to: []` everywhere due to a known
+   flp_diff adapter bug, so parity doesn't force this one.
 
 **Closed in prior sessions:**
 - Pass 1 parity: **85/85** (counts-and-kinds).
@@ -273,6 +277,18 @@ FL 25   8/8   ✅
   2 remaining deltas are a Kickstart VST wrapper-vendor case where TS is
   more faithful than Python, and one file where Python's `flp-info`
   crashes). See parity section for detail.
+- MixerParams attribution: `0xE1` records unpack via
+  `channel_data = (insertIdx << 6) | slotIdx` into
+  `MixerInsert.{pan,volume,stereoSeparation}` and
+  `MixerSlot.{enabled,mix}`. Presentation layer matches the reference parser's
+  `slot.enabled: true` hardcode (a bug in `the MixerParams getter`);
+  the real bit is preserved in the internal model.
+- Insert routing stream: `FLPProject.insertRouting` holds the
+  concatenated `0xE7` bit-stream for future per-insert projection.
+- ProjectMetadata u8 fields: `timeSignatureNumerator`,
+  `timeSignatureDenominator` (0x11/0x12), `panLaw` (0x17),
+  `mainVolume` (0x0C, legacy) — all TS-internal since Python's
+  `flp-info` never surfaces them.
 - Muted channel state: investigated — the reference parser has no `a channel-muted event`,
   Python's `flp_diff.Channel.muted` defaults to False; TS presentation
   layer matches by construction. `enabled` (IsEnabled `0x00`) is the
@@ -280,6 +296,8 @@ FL 25   8/8   ✅
 - Note flags bitmask: `Note.slide` now derived from `flags & 0x08`,
   mirroring the reference parser's only catalogued flag. Raw `flags` kept alongside
   for future bit additions and round-trip fidelity.
+- Channel zipped: `Channel.zipped` decoded from `0x0F`. Absence ≡ false
+  per the reference parser's FL-write-only semantics.
 
 ## For the next session
 
