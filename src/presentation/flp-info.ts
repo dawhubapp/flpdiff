@@ -288,9 +288,11 @@ function pluginToJson(plugin: ChannelPlugin | undefined): PluginJson | null {
  * (see `pluginToJson`).
  */
 function slotPluginToJson(slot: MixerSlot): PluginJson | null {
-  if (!slot.hasPlugin && slot.pluginName === undefined && slot.internalName === undefined) {
-    return null;
-  }
+  // Plugin presence is keyed solely off `0xD5` (plugin state)
+  // presence. Slots with a `0xCB` name or `0xC9` internal name but
+  // no `0xD5` (e.g., native Fruity dB meter slots that FL emits
+  // metadata for but no state blob) return None in Python's output.
+  if (slot.hasPlugin !== true) return null;
   const isVst = slot.internalName === "Fruity Wrapper";
   // Python's resolution order for the slot plugin's name:
   //   1. slot display name (`0xCB`, user "rename")
