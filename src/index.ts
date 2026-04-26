@@ -131,3 +131,5 @@ export {
   compareMixer,
   compareMixerFromJson,
 } from "./diff/mixer-diff.ts";
+export { fmtBeats, compareTrack, compareArrangement } from "./diff/arrangement-diff.ts";
+export { comparePattern } from "./diff/comparator.ts";

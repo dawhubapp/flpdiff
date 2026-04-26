@@ -26,6 +26,19 @@ import {
 } from "./diff-model.ts";
 import { pairByKey, type Match } from "./matcher.ts";
 import { compareMixerFromJson } from "./mixer-diff.ts";
+import { compareArrangement } from "./arrangement-diff.ts";
+import { diffNotes } from "./note-diff.ts";
+import { diffAutomationPoints } from "./automation-diff.ts";
+import {
+  makePatternDiff,
+  makeDiffSummary,
+  computeSummaryCounts,
+  type PatternDiff,
+  type ArrangementDiff,
+  type DiffResult,
+  type MixerDiff,
+  type OpaqueChange,
+} from "./diff-model.ts";
 
 // --------------------------------------------------------------------- //
 // Formatting primitives — must match Python's output byte-for-byte     //
@@ -613,18 +626,157 @@ export function compareChannel(match: Match<ChannelJson>): ChannelDiff {
  * diff, automation diff, mixer-insert diff, arrangement diff, and
  * clip-collapse grouping land in subsequent commits.
  */
-export function compareProjectsJson(
-  oldJson: FlpInfoJson,
-  newJson: FlpInfoJson,
-): {
-  metadataChanges: Change[];
-  channelChanges: ChannelDiff[];
-  mixerChanges: import("./diff-model.ts").MixerDiff;
-} {
+// --------------------------------------------------------------------- //
+// Pattern comparison                                                    //
+// --------------------------------------------------------------------- //
+
+type PatternJson = FlpInfoJson["patterns"][number];
+
+function patternLabel(p: PatternJson): string {
+  const name = p.name ?? `#${p.iid}`;
+  return `pattern '${name}'`;
+}
+
+/**
+ * Python's `str.capitalize()` — uppercase first character, lowercase
+ * ALL others (including letters inside single quotes, hyphens, etc.).
+ * Different from the natural "capitalize first letter only" intuition.
+ */
+function capitalize(s: string): string {
+  if (s.length === 0) return s;
+  return s[0]!.toUpperCase() + s.slice(1).toLowerCase();
+}
+
+/**
+ * Produce a `PatternDiff` for one matched (or unmatched) pair. Scalar
+ * fields (name, color, length, looped) + per-note diff (via
+ * `diffNotes`) + controller-keyframe diff (via `diffAutomationPoints`).
+ */
+export function comparePattern(match: Match<PatternJson>, ppq: number): PatternDiff {
+  if (match.old === null && match.new !== null) {
+    return makePatternDiff({
+      identity: ["pattern", match.new.iid],
+      kind: "added",
+      name: match.new.name,
+      humanLabel: `Added ${patternLabel(match.new)} (${match.new.notes.length} notes)`,
+    });
+  }
+  if (match.old !== null && match.new === null) {
+    return makePatternDiff({
+      identity: ["pattern", match.old.iid],
+      kind: "removed",
+      name: match.old.name,
+      humanLabel: `Removed ${patternLabel(match.old)} (${match.old.notes.length} notes)`,
+    });
+  }
+
+  const oldP = match.old!;
+  const newP = match.new!;
+  const path = `patterns[${oldP.iid}]`;
+  const changes: Change[] = [];
+  const push = (c: Change | null) => {
+    if (c !== null) changes.push(c);
+  };
+
+  if (oldP.name !== newP.name) {
+    push(
+      scalarChange(
+        `${path}.name`,
+        oldP.name,
+        newP.name,
+        `Pattern renamed from ${fmtNoneFriendly(oldP.name)} to ${fmtNoneFriendly(newP.name)}`,
+      ),
+    );
+  }
+  if (!deepEqual(oldP.color, newP.color)) {
+    push(
+      scalarChange(
+        `${path}.color`,
+        oldP.color,
+        newP.color,
+        `Pattern color: ${colorHex(oldP.color)} → ${colorHex(newP.color)}`,
+      ),
+    );
+  }
+  if (oldP.length !== newP.length) {
+    push(
+      scalarChange(
+        `${path}.length`,
+        oldP.length,
+        newP.length,
+        `Pattern length: ${fmtNoneFriendly(oldP.length)} → ${fmtNoneFriendly(newP.length)} ticks`,
+      ),
+    );
+  }
+  if (oldP.looped !== newP.looped) {
+    push(
+      scalarChange(
+        `${path}.looped`,
+        oldP.looped,
+        newP.looped,
+        `Pattern loop ${fmtBool(newP.looped)} (was ${fmtBool(oldP.looped)})`,
+      ),
+    );
+  }
+
+  const noteChanges = diffNotes(oldP.notes, newP.notes, ppq);
+  const controllerChanges = diffAutomationPoints(oldP.controllers, newP.controllers, ppq);
+
+  const nChanges = changes.length + noteChanges.length + controllerChanges.length;
+  const label =
+    nChanges > 0
+      ? `${capitalize(patternLabel(oldP))} modified (${nChanges} changes)`
+      : `${capitalize(patternLabel(oldP))} unchanged`;
+
+  return makePatternDiff({
+    identity: ["pattern", oldP.iid],
+    kind: "modified",
+    name: oldP.name,
+    humanLabel: label,
+    changes,
+    noteChanges,
+    controllerChanges,
+  });
+}
+
+// --------------------------------------------------------------------- //
+// Top-level orchestrator                                                //
+// --------------------------------------------------------------------- //
+
+function renderSummary(
+  counts: { [k: string]: number },
+  noteCount: number,
+  automationCount: number,
+  trackCount: number,
+): string {
+  if (counts.total === 0 && noteCount === 0 && automationCount === 0 && trackCount === 0) {
+    return "No changes";
+  }
+  const parts: string[] = [];
+  for (const key of ["metadata", "channels", "patterns", "mixer", "arrangements", "opaque"] as const) {
+    const n = counts[key];
+    if (n) parts.push(`${n} ${key}`);
+  }
+  if (trackCount) parts.push(`${trackCount} tracks`);
+  if (noteCount) parts.push(`${noteCount} notes`);
+  if (automationCount) parts.push(`${automationCount} automation keyframes`);
+  return `${counts.total} changes (${parts.join(", ")})`;
+}
+
+/**
+ * JSON-level orchestrator. Emits a full `DiffResult` with a rendered
+ * `humanLabel` summary. Mirrors Python's `compare_projects`.
+ *
+ * `opaqueChanges` is currently always empty — plugin-state opaque
+ * deltas are stubbed until the plugin-state registry lands on the TS
+ * side. `opaque_events` from the raw parser are separate and not
+ * routed here.
+ */
+export function compareProjectsJson(oldJson: FlpInfoJson, newJson: FlpInfoJson): DiffResult {
+  const ppq = newJson.metadata.ppq || oldJson.metadata.ppq || 96;
+
   const metadataChanges = compareMetadata(oldJson.metadata, newJson.metadata);
 
-  // Match on the same semantics as matchChannels (primary iid, secondary
-  // "kind\x00name" with kind guard), but operate on ChannelJson.
   const channelMatches = pairByKey(
     oldJson.channels,
     newJson.channels,
@@ -633,28 +785,106 @@ export function compareProjectsJson(
   );
   const channelChanges: ChannelDiff[] = [];
   for (const m of channelMatches) {
-    const diff = compareChannel(m);
-    if (diff.kind === "modified" && diff.changes.length === 0) continue;
-    channelChanges.push(diff);
+    const d = compareChannel(m);
+    if (d.kind === "added" || d.kind === "removed" || d.changes.length > 0 || d.automationChanges.length > 0) {
+      channelChanges.push(d);
+    }
   }
 
-  const mixerChanges = compareMixerFromJson(oldJson.mixer.inserts, newJson.mixer.inserts);
+  const patternMatches = pairByKey(
+    oldJson.patterns,
+    newJson.patterns,
+    (p) => p.iid,
+    (p) => p.name || undefined,
+  );
+  const patternChanges: PatternDiff[] = [];
+  for (const m of patternMatches) {
+    const d = comparePattern(m, ppq);
+    if (
+      d.kind === "added" ||
+      d.kind === "removed" ||
+      d.changes.length > 0 ||
+      d.noteChanges.length > 0 ||
+      d.controllerChanges.length > 0
+    ) {
+      patternChanges.push(d);
+    }
+  }
 
-  return { metadataChanges, channelChanges, mixerChanges };
+  const mixerChanges: MixerDiff = compareMixerFromJson(oldJson.mixer.inserts, newJson.mixer.inserts);
+
+  // Build cross-project lookup tables so clip labels resolve to pattern
+  // / channel names. New project takes precedence so renames surface.
+  const channelsByIid = new Map<number, FlpInfoJson["channels"][number]>();
+  for (const ch of oldJson.channels) channelsByIid.set(ch.iid, ch);
+  for (const ch of newJson.channels) channelsByIid.set(ch.iid, ch);
+  const patternsByIid = new Map<number, PatternJson>();
+  for (const p of oldJson.patterns) patternsByIid.set(p.iid, p);
+  for (const p of newJson.patterns) patternsByIid.set(p.iid, p);
+
+  const arrangementMatches = pairByKey(
+    oldJson.arrangements,
+    newJson.arrangements,
+    (a) => a.index,
+    (a) => a.name || undefined,
+  );
+  const arrangementChanges: ArrangementDiff[] = [];
+  for (const m of arrangementMatches) {
+    const d = compareArrangement(m, channelsByIid, patternsByIid, ppq);
+    if (
+      d.kind === "added" ||
+      d.kind === "removed" ||
+      d.changes.length > 0 ||
+      d.trackChanges.length > 0
+    ) {
+      arrangementChanges.push(d);
+    }
+  }
+
+  const opaqueChanges: OpaqueChange[] = [];
+
+  const counts = computeSummaryCounts({
+    metadataChanges,
+    channelChanges,
+    patternChanges,
+    mixerChanges,
+    arrangementChanges,
+    opaqueChanges,
+  });
+  const noteCount = patternChanges.reduce((n, pd) => n + pd.noteChanges.length, 0);
+  const automationCount = patternChanges.reduce((n, pd) => n + pd.controllerChanges.length, 0);
+  const trackCount = arrangementChanges.reduce((n, ad) => n + ad.trackChanges.length, 0);
+
+  const summary = makeDiffSummary({
+    totalChanges: counts.total,
+    metadataChanges: counts.metadata,
+    channelChanges: counts.channels,
+    patternChanges: counts.patterns,
+    mixerChanges: counts.mixer,
+    arrangementChanges: counts.arrangements,
+    opaqueChanges: counts.opaque,
+    noteChanges: noteCount,
+    automationChanges: automationCount,
+    trackChanges: trackCount,
+    humanLabel: renderSummary(counts, noteCount, automationCount, trackCount),
+  });
+
+  return {
+    summary,
+    metadataChanges,
+    channelChanges,
+    patternChanges,
+    mixerChanges,
+    arrangementChanges,
+    opaqueChanges,
+  };
 }
 
 /**
- * Raw-FLPProject entry point. Projects both sides through `toFlpInfoJson`
- * and delegates to `compareProjectsJson`. This is the typical entry
- * point — users start with `parseFLPFile` → two FLPProjects → diff.
+ * Raw-FLPProject entry point. Projects both sides via `toFlpInfoJson`
+ * and delegates to `compareProjectsJson`. Typical user path:
+ * `parseFLPFile` → two FLPProjects → `compareProjects`.
  */
-export function compareProjects(
-  oldProj: FLPProject,
-  newProj: FLPProject,
-): {
-  metadataChanges: Change[];
-  channelChanges: ChannelDiff[];
-  mixerChanges: import("./diff-model.ts").MixerDiff;
-} {
+export function compareProjects(oldProj: FLPProject, newProj: FLPProject): DiffResult {
   return compareProjectsJson(toFlpInfoJson(oldProj), toFlpInfoJson(newProj));
 }
