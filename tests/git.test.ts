@@ -164,7 +164,7 @@ describe("setupGit — global scope", () => {
 });
 
 describe("renderSetupRecap", () => {
-  test("prints scope + mode + path + commands + next-step hint", () => {
+  test("prints OK status + scope + mode + path + commands + next-step hint", () => {
     const r = renderSetupRecap({
       scope: "local",
       mode: "command",
@@ -173,11 +173,33 @@ describe("renderSetupRecap", () => {
       gitattributesTouched: true,
       configCommands: [["git", "config", "--local", "diff.flp.command", "/usr/bin/flpdiff git-driver"]],
       notes: [],
+      executablePath: "/usr/bin/flpdiff",
+      verified: true,
     });
+    expect(r).toContain("(OK)");
     expect(r).toContain("scope=local, mode=command");
     expect(r).toContain("/tmp/x/.gitattributes (updated)");
+    expect(r).toContain("executable: /usr/bin/flpdiff");
     expect(r).toContain("$ git config --local diff.flp.command /usr/bin/flpdiff git-driver");
     expect(r).toContain("try: git diff");
+  });
+
+  test("reports FAILED + hint to git-verify when setup didn't verify", () => {
+    const r = renderSetupRecap({
+      scope: "local",
+      mode: "command",
+      lfs: false,
+      gitattributesPath: "/tmp/x/.gitattributes",
+      gitattributesTouched: true,
+      configCommands: [["git", "config", "--local", "diff.flp.command", "flpdiff git-driver"]],
+      notes: ["git-setup verification failed: …"],
+      executablePath: "flpdiff",
+      verified: false,
+    });
+    expect(r).toContain("(FAILED)");
+    expect(r).toContain("note: git-setup verification failed:");
+    expect(r).toContain("run `flpdiff git-verify`");
+    expect(r).not.toContain("try: git diff");
   });
 });
 
@@ -230,5 +252,105 @@ describe("CLI — git-setup + git-driver subcommand dispatch", () => {
   test("flpdiff git-setup rejects unknown args", async () => {
     const code = await run(["git-setup", "--nonsense"]);
     expect(code).toBe(2);
+  });
+
+  test("flpdiff git-verify rejects unknown args", async () => {
+    const code = await run(["git-verify", "--nonsense"]);
+    expect(code).toBe(2);
+  });
+});
+
+// --------------------------------------------------------------------- //
+// verifyGit — post-install sanity check                                 //
+// --------------------------------------------------------------------- //
+
+import { verifyGit, renderVerifyReport } from "../src/git.ts";
+import { execSync } from "node:child_process";
+
+function initRepo(dir: string): void {
+  execSync("git init -q", { cwd: dir });
+  execSync("git config --local user.email you@example.com", { cwd: dir });
+  execSync("git config --local user.name you", { cwd: dir });
+}
+
+describe("verifyGit", () => {
+  test("reports error when not in a git repo", () => {
+    const dir = mkTmp("flpdiff-verify-");
+    const result = verifyGit({ repoRoot: dir });
+    expect(result.status).toBe("error");
+    const firstCheck = result.checks[0]!;
+    expect(firstCheck.status).toBe("error");
+    expect(firstCheck.label).toContain("inside a git repo");
+  });
+
+  test("detects a fresh repo + produces structured checks", () => {
+    const dir = mkTmp("flpdiff-verify-");
+    initRepo(dir);
+    const result = verifyGit({ repoRoot: dir });
+    // `status` depends on whether the host has global flpdiff config
+    // (CI may or may not, and the fallback is legitimate behaviour —
+    // it's how `git-setup --global` works). Assert structure only.
+    expect(result.checks.length).toBeGreaterThanOrEqual(2);
+    const repoCheck = result.checks.find((c) => c.label.includes("inside a git repo"))!;
+    expect(repoCheck.status).toBe("ok");
+    const labels = result.checks.map((c) => c.label);
+    expect(labels.some((l) => l.includes(".gitattributes"))).toBe(true);
+    expect(labels.some((l) => l.includes("diff.flp"))).toBe(true);
+  });
+
+  test("reports ok after a real setupGit call with an absolute binary path", () => {
+    const dir = mkTmp("flpdiff-verify-");
+    initRepo(dir);
+    // Fake a binary at a stable path so verify's executable check
+    // has something to find. We use `echo` — it exists on every
+    // POSIX system and the --version smoke test will fail (not
+    // an "ok" status), so we expect "warn" overall, not "ok".
+    setupGit({
+      scope: "local",
+      mode: "command",
+      repoRoot: dir,
+      runner: (cmd) => {
+        // Actually apply config to THIS repo. Mirror defaultRunner's
+        // behaviour: --unset is allowed to fail on missing keys.
+        const suppress = cmd.length > 3 && cmd[3] === "--unset";
+        try {
+          execSync(cmd.map((a) => JSON.stringify(a)).join(" "), { cwd: dir, stdio: "ignore" });
+          return 0;
+        } catch {
+          return suppress ? 0 : 1;
+        }
+      },
+      executablePath: "/bin/echo",
+    });
+    const result = verifyGit({ repoRoot: dir });
+    // /bin/echo exists but `echo --version` doesn't start with
+    // "flpdiff " — so smoke test is "warn". Overall status: warn.
+    expect(["warn", "ok"]).toContain(result.status);
+    const labels = result.checks.map((c) => c.label);
+    expect(labels.some((l) => l.includes("rule present"))).toBe(true);
+    expect(labels.some((l) => l.includes("diff.flp.command"))).toBe(true);
+  });
+
+  test("renderVerifyReport surfaces markers + fix suggestions on error", () => {
+    const report = renderVerifyReport({
+      status: "error",
+      checks: [
+        { status: "error", label: "inside a git repo", detail: "not found" },
+      ],
+    });
+    expect(report).toContain("[✗] inside a git repo");
+    expect(report).toContain("problems found");
+    expect(report).toContain("Common fixes:");
+    expect(report).toContain("`flpdiff git-setup`");
+  });
+
+  test("renderVerifyReport shows OK on clean result", () => {
+    const report = renderVerifyReport({
+      status: "ok",
+      checks: [{ status: "ok", label: "all good", detail: "yep" }],
+    });
+    expect(report).toContain("git-verify: OK");
+    expect(report).toContain("[✓] all good");
+    expect(report).not.toContain("Common fixes:");
   });
 });

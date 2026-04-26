@@ -18,7 +18,15 @@ import { diffSummaryHasChanges } from "./diff/diff-model.ts";
 import { toFlpInfoJson } from "./presentation/flp-info.ts";
 import { renderInfo } from "./info.ts";
 import { renderCanonical } from "./canonical.ts";
-import { gitDriverMain, setupGit, renderSetupRecap, type Scope, type DriverMode } from "./git.ts";
+import {
+  gitDriverMain,
+  setupGit,
+  renderSetupRecap,
+  verifyGit,
+  renderVerifyReport,
+  type Scope,
+  type DriverMode,
+} from "./git.ts";
 import { basename } from "node:path";
 
 const EXIT_IDENTICAL = 0;
@@ -31,6 +39,7 @@ const USAGE = `Usage:
     F ∈ text (default) | json | canonical
   flpdiff git-setup [--global] [--textconv] [--lfs]
                                               Configure git to use flpdiff as the FLP diff driver
+  flpdiff git-verify                          Diagnose the current repo's flpdiff git setup
   flpdiff git-driver <...7 or 9 args...>      Internal: invoked by git's external-diff protocol
   flpdiff --help | --version
 
@@ -40,7 +49,7 @@ Exit codes (diff):
   2  parse or I/O error
 `;
 
-const SUBCOMMANDS = new Set(["info", "git-setup", "git-driver"]);
+const SUBCOMMANDS = new Set(["info", "git-setup", "git-driver", "git-verify"]);
 
 // Version is read from package.json at build time; for now, inline.
 const VERSION = "0.1.0";
@@ -69,6 +78,8 @@ export async function run(argv: readonly string[]): Promise<number> {
         return runInfo(rest);
       case "git-setup":
         return runGitSetup(rest);
+      case "git-verify":
+        return runGitVerify(rest);
       case "git-driver":
         return gitDriverMain(rest);
     }
@@ -190,11 +201,33 @@ function runGitSetup(argv: readonly string[]): number {
   }
   try {
     const result = setupGit({ scope, mode, lfs });
-    console.log(renderSetupRecap(result));
-    return 0;
+    const recap = renderSetupRecap(result);
+    if (result.verified) {
+      console.log(recap);
+      return 0;
+    }
+    // Setup didn't verify — recap goes to stderr so exit-code-sensitive
+    // callers don't mistake the text on stdout for success.
+    Bun.write(Bun.stderr, recap + "\n");
+    return EXIT_ERROR;
   } catch (e) {
     return handleError(e);
   }
+}
+
+function runGitVerify(argv: readonly string[]): number {
+  if (argv.length > 0) {
+    console.error(`flpdiff git-verify: unexpected argument: ${argv[0]}`);
+    return EXIT_ERROR;
+  }
+  const result = verifyGit();
+  const report = renderVerifyReport(result);
+  if (result.status === "error") {
+    Bun.write(Bun.stderr, report + "\n");
+    return EXIT_ERROR;
+  }
+  console.log(report);
+  return 0;
 }
 
 function handleError(e: unknown): number {
