@@ -35,6 +35,12 @@ export type ProjectMetadata = {
   looped?: boolean;
   /** Show-project-info-on-open flag. Opcode `0x0A`. */
   showInfo?: boolean;
+  /**
+   * Main pitch semitones × 100 (cents). Opcode `0x50`, stored as
+   * signed int16. E.g. `100` = +1 semitone, `-400` = -4 semitones.
+   * Python's `flp-info` emits as `metadata.main_pitch`.
+   */
+  mainPitch?: number;
   /** Project creation timestamp. Opcode `0xED`. */
   createdOn?: Date;
   /**

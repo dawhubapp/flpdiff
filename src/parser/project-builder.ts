@@ -184,16 +184,17 @@ const OP_TIMEMARKER_NAME = 0xcd;
  */
 const OP_PROJECT_LOOP_ACTIVE = 0x09; // the loop-active event (BYTE, bool)
 const OP_PROJECT_SHOW_INFO = 0x0a; // the show-info event (BYTE, bool)
-const OP_PROJECT_TITLE = 0xc2; // TEXT+2, UTF-16LE null-terminated
-const OP_PROJECT_COMMENTS = 0xc3; // TEXT+3, UTF-16LE (plaintext, pre-FL-1.2.10)
-const OP_PROJECT_URL = 0xc5; // TEXT+5, UTF-16LE
-const OP_PROJECT_RTF_COMMENTS = 0xc6; // TEXT+6, UTF-16LE (RTF, FL 1.2.10+)
-const OP_PROJECT_FL_VERSION = 0xc7; // TEXT+7, ASCII "A.B.C" or "A.B.C.D"
-const OP_PROJECT_DATA_PATH = 0xca; // TEXT+10, UTF-16LE
-const OP_PROJECT_GENRE = 0xce; // TEXT+14, UTF-16LE
-const OP_PROJECT_ARTISTS = 0xcf; // TEXT+15, UTF-16LE
-const OP_PROJECT_FL_BUILD = 0x9f; // DWORD+31, uint32 LE
-const OP_PROJECT_TIMESTAMP = 0xed; // DATA+29, 16-byte the timestamp event class (2× float64 LE)
+const OP_PROJECT_PITCH = 0x50; // main pitch (i16 signed)
+const OP_PROJECT_TITLE = 0xc2; // UTF-16LE null-terminated
+const OP_PROJECT_COMMENTS = 0xc3; // UTF-16LE (plaintext, pre-FL-1.2.10)
+const OP_PROJECT_URL = 0xc5; // UTF-16LE
+const OP_PROJECT_RTF_COMMENTS = 0xc6; // UTF-16LE (RTF, FL 1.2.10+)
+const OP_PROJECT_FL_VERSION = 0xc7; // ASCII "A.B.C" or "A.B.C.D"
+const OP_PROJECT_DATA_PATH = 0xca; // UTF-16LE
+const OP_PROJECT_GENRE = 0xce; // UTF-16LE
+const OP_PROJECT_ARTISTS = 0xcf; // UTF-16LE
+const OP_PROJECT_FL_BUILD = 0x9f; // uint32 LE
+const OP_PROJECT_TIMESTAMP = 0xed; // 16-byte timestamp (2× float64 LE)
 
 function parseFlVersionAscii(value: string): ProjectMetadata["version"] | undefined {
   // Format is either "A.B.C" (build=null default) or "A.B.C.D".
@@ -284,6 +285,11 @@ export function buildMetadata(events: readonly FLPEvent[]): ProjectMetadata {
     }
     if (ev.opcode === OP_PROJECT_SHOW_INFO && ev.kind === "u8" && out.showInfo === undefined) {
       out.showInfo = ev.value !== 0;
+      continue;
+    }
+    if (ev.opcode === OP_PROJECT_PITCH && ev.kind === "u16" && out.mainPitch === undefined) {
+      // WORD+16 is stored as uint16 by the walker; interpret as signed int16.
+      out.mainPitch = ev.value > 0x7fff ? ev.value - 0x10000 : ev.value;
       continue;
     }
     if (ev.opcode === OP_PROJECT_TIMESTAMP && ev.kind === "blob" && out.createdOn === undefined) {

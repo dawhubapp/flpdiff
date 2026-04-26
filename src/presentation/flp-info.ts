@@ -75,7 +75,19 @@ type NoteJson = {
   release: number;
 };
 
-type ControllerJson = Record<string, unknown>;
+/**
+ * Pattern controllers. The reference Python adapter reshapes
+ * raw 12-byte controller records (position/channel/flags/value)
+ * into `AutomationPoint` objects keeping only
+ * `{position, value, tension}`. We mirror that shape — tension
+ * isn't in the 12-byte record so it defaults to 0.0.
+ */
+type ControllerJson = {
+  _type: "AutomationPoint";
+  position: number;
+  value: number;
+  tension: number;
+};
 
 type PatternJson = {
   _type: "Pattern";
@@ -231,6 +243,19 @@ function pathToJson(value: string | undefined): PathJson | null {
   return { _type: "path", value };
 }
 
+/**
+ * Strip a trailing `/` (or `\`) from a path string unless the path
+ * IS the root separator. Mirrors `pathlib.Path(raw).as_posix()`
+ * behaviour — Python's flp-info pipes `data_path` through `pathlib.Path`,
+ * which normalises away trailing separators.
+ */
+function normalisePath(raw: string): string {
+  if (raw.length <= 1) return raw;
+  const last = raw[raw.length - 1];
+  if (last === "/" || last === "\\") return raw.slice(0, -1);
+  return raw;
+}
+
 /** Default FL color for freshly-created sampler channels (gray). */
 const DEFAULT_CHANNEL_COLOR: RGBA = { r: 65, g: 69, b: 72, a: 0 };
 
@@ -292,23 +317,30 @@ function toChannel(ch: Channel): ChannelJson {
   // to 1.0).
   const pan = Math.max(-1, Math.min(1, (ch.levels?.pan ?? 6400) / 6400));
   const volume = (ch.levels?.volume ?? 10000) / 12800;
+  // the reference parser's `Layer` and `Automation` subclasses don't expose `insert`
+  // or `sample_path` — Python's `the safe-attr fallback` returns None for both.
+  // Mirror that on the TS side so Pass 2 parity matches even when
+  // FL 9 legacy layouts emit 0x16 RoutedTo or 0xC4 SamplePath events
+  // within a layer/automation channel's scope.
+  const hasMixRouting = ch.kind !== "automation" && ch.kind !== "layer";
+  const hasSamplePath = ch.kind !== "automation" && ch.kind !== "layer";
   return {
     _type: "Channel",
     iid: ch.iid,
     kind: ch.kind,
     name: ch.name ?? null,
-    sample_path: pathToJson(ch.sample_path),
+    sample_path: hasSamplePath ? pathToJson(ch.sample_path) : null,
     plugin: pluginToJson(ch.plugin),
     color: rgbaToJson(ch.color ?? DEFAULT_CHANNEL_COLOR),
     pan,
     volume,
     enabled: ch.enabled ?? true,
     muted: false, // TS doesn't decode muted yet — Python default
-    // the reference parser's `Automation` subclass doesn't expose `.insert`, so
-    // `the safe-attr fallback(ch, "insert")` returns None → `target_insert: null`
-    // in Python's output. FL still emits a 0x16 event on automation
-    // channels with value 0, but Python ignores it. Mirror that.
-    target_insert: ch.kind === "automation" ? null : (ch.targetInsert ?? null),
+    // The Automation and Layer kinds don't expose `.insert` in the
+    // reference adapter — `target_insert` lands as null in Python's
+    // output even though FL may still emit a 0x16 routed-to event
+    // within those scopes.
+    target_insert: hasMixRouting ? (ch.targetInsert ?? null) : null,
     automation_points: (ch.automationPoints ?? []).map((p) => ({
       _type: "AutomationPoint" as const,
       position: p.position,
@@ -344,7 +376,12 @@ function toPattern(p: Pattern): PatternJson {
     length: p.length ?? null,
     looped: p.looped ?? false,
     notes: p.notes.map(toNote),
-    controllers: p.controllers.map(() => ({})), // TODO: Controller shape
+    controllers: p.controllers.map((c) => ({
+      _type: "AutomationPoint" as const,
+      position: c.position,
+      value: c.value,
+      tension: 0.0,
+    })),
   };
 }
 
@@ -492,13 +529,20 @@ function toMetadata(project: FLPProject, tempo: number): MetadataJson {
     ppq: project.header.ppq,
     tempo,
     time_signature: null,
-    main_pitch: 0,
+    main_pitch: m.mainPitch ?? 0,
     main_volume: null,
     pan_law: 0,
     looped: m.looped ?? false,
     show_info: m.showInfo ?? false,
     url: m.url ?? null,
-    data_path: { _type: "path", value: m.dataPath ?? "." },
+    data_path: {
+      _type: "path",
+      // Python wraps in `pathlib.Path(...)`, which normalises by
+      // stripping trailing slashes. We get the raw UTF-16LE string
+      // from FL (e.g. ".../bass_sketch/") — trim the trailing slash
+      // unless the value is just "/".
+      value: normalisePath(m.dataPath ?? "."),
+    },
     created_on: datetimeToJson(m.createdOn),
     time_spent: timedeltaToJson(m.timeSpent),
     version: m.version
