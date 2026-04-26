@@ -25,6 +25,7 @@ import {
   type ChannelDiff,
 } from "./diff-model.ts";
 import { pairByKey, type Match } from "./matcher.ts";
+import { compareMixerFromJson } from "./mixer-diff.ts";
 
 // --------------------------------------------------------------------- //
 // Formatting primitives — must match Python's output byte-for-byte     //
@@ -382,6 +383,15 @@ function pluginDisplayLabel(p: PluginJson): string {
  * is effectively a different plugin; vendor/is_vst changes suppress
  * because `pluginDisplayLabel` already embeds them in the swap label.
  */
+export function comparePluginLabels(
+  pathPrefix: string,
+  oldP: PluginJson | null,
+  newP: PluginJson | null,
+  slotHint = "",
+): Change[] {
+  return comparePlugin(pathPrefix, oldP, newP, slotHint);
+}
+
 function comparePlugin(
   pathPrefix: string,
   oldP: PluginJson | null,
@@ -609,6 +619,7 @@ export function compareProjectsJson(
 ): {
   metadataChanges: Change[];
   channelChanges: ChannelDiff[];
+  mixerChanges: import("./diff-model.ts").MixerDiff;
 } {
   const metadataChanges = compareMetadata(oldJson.metadata, newJson.metadata);
 
@@ -623,13 +634,13 @@ export function compareProjectsJson(
   const channelChanges: ChannelDiff[] = [];
   for (const m of channelMatches) {
     const diff = compareChannel(m);
-    // Drop unchanged pairs (Python does the same — only matched pairs
-    // with at least one Change or an added/removed kind make it in).
     if (diff.kind === "modified" && diff.changes.length === 0) continue;
     channelChanges.push(diff);
   }
 
-  return { metadataChanges, channelChanges };
+  const mixerChanges = compareMixerFromJson(oldJson.mixer.inserts, newJson.mixer.inserts);
+
+  return { metadataChanges, channelChanges, mixerChanges };
 }
 
 /**
@@ -643,6 +654,7 @@ export function compareProjects(
 ): {
   metadataChanges: Change[];
   channelChanges: ChannelDiff[];
+  mixerChanges: import("./diff-model.ts").MixerDiff;
 } {
   return compareProjectsJson(toFlpInfoJson(oldProj), toFlpInfoJson(newProj));
 }
