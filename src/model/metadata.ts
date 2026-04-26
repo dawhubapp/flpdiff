@@ -7,6 +7,29 @@
 export type ProjectMetadata = {
   /** User-set project title. Opcode `0xC2`. */
   title?: string;
+  /** User-set artists credit. Opcode `0xCF`. */
+  artists?: string;
+  /** User-set genre. Opcode `0xCE`. */
+  genre?: string;
+  /**
+   * Free-text comments. FL 1.2.10+ stores RTF at opcode `0xC6`;
+   * older saves use plaintext at opcode `0xC3`. When both are
+   * present, the first-emitted wins.
+   */
+  comments?: string;
+  /** User-set URL. Opcode `0xC5`. */
+  url?: string;
+  /**
+   * Project data folder. Opcode `0xCA`. Defaults to `"."` when the
+   * project hasn't been saved somewhere with a custom data folder.
+   */
+  dataPath?: string;
+  /** FL version recovered from `the FL-version event = TEXT + 7 = 0xC7`. */
+  version?: { major: number; minor: number; patch: number; build: number };
+  /** Loop-playback flag. Opcode `0x09`. */
+  looped?: boolean;
+  /** Show-project-info-on-open flag. Opcode `0x0A`. */
+  showInfo?: boolean;
   /** Project creation timestamp. Opcode `0xED`. */
   createdOn?: Date;
   /**

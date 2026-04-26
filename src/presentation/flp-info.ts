@@ -379,36 +379,17 @@ function toArrangement(a: Arrangement): ArrangementJson {
 
 // --- Metadata --------------------------------------------------------- //
 
-function parseFlVersion(banner: string | undefined): FLVersionJson {
-  // Banner format observed: "FL Studio 25.2.4.4960.4960" (with a doubled
-  // build number on FL 25.2.4); take the first four numeric components.
-  if (banner === undefined) {
-    return { _type: "FLVersion", major: 0, minor: 0, patch: 0, build: 0 };
-  }
-  const m = banner.match(/(\d+)\.(\d+)\.(\d+)\.(\d+)/);
-  if (!m) return { _type: "FLVersion", major: 0, minor: 0, patch: 0, build: 0 };
-  return {
-    _type: "FLVersion",
-    major: Number(m[1]!),
-    minor: Number(m[2]!),
-    patch: Number(m[3]!),
-    build: Number(m[4]!),
-  };
-}
-
 function toMetadata(project: FLPProject, tempo: number): MetadataJson {
-  // TODO: decode artists/genre/comments/format/data_path/time_signature/
-  // main_pitch/main_volume/pan_law/looped/show_info/url. Those emit
-  // Python defaults for now so the shape matches and the runner
-  // flags drift per-field.
-  const version = parseFlVersion(getBanner(project));
+  // TODO: decode format/time_signature/main_pitch/main_volume/pan_law.
+  // Those emit Python defaults for now so the shape matches and the
+  // runner flags drift per-field.
   const m = project.metadata;
   return {
     _type: "ProjectMetadata",
     title: m.title ?? "",
-    artists: "",
-    genre: "",
-    comments: "",
+    artists: m.artists ?? "",
+    genre: m.genre ?? "",
+    comments: m.comments ?? "",
     format: "project",
     ppq: project.header.ppq,
     tempo,
@@ -416,13 +397,15 @@ function toMetadata(project: FLPProject, tempo: number): MetadataJson {
     main_pitch: 0,
     main_volume: null,
     pan_law: 0,
-    looped: false,
-    show_info: false,
-    url: null,
-    data_path: { _type: "path", value: "." },
+    looped: m.looped ?? false,
+    show_info: m.showInfo ?? false,
+    url: m.url ?? null,
+    data_path: { _type: "path", value: m.dataPath ?? "." },
     created_on: datetimeToJson(m.createdOn),
     time_spent: timedeltaToJson(m.timeSpent),
-    version,
+    version: m.version
+      ? { _type: "FLVersion", ...m.version }
+      : { _type: "FLVersion", major: 0, minor: 0, patch: 0, build: 0 },
   };
 }
 
@@ -456,12 +439,6 @@ function timedeltaToJson(
 ): TimedeltaJson | null {
   if (t === undefined) return null;
   return { _type: "timedelta", seconds: t.seconds };
-}
-
-function getBanner(project: FLPProject): string | undefined {
-  const ev = project.events.find((e) => e.kind === "blob" && e.opcode === 0x36);
-  if (!ev || ev.kind !== "blob") return undefined;
-  return new TextDecoder("utf-16le").decode(ev.payload).replace(/\0+$/g, "");
 }
 
 function getTempoFromProject(project: FLPProject): number {

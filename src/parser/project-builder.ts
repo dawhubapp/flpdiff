@@ -1,5 +1,5 @@
 import type { FLPEvent } from "./event.ts";
-import { decodeUtf16LeBytes } from "./primitives.ts";
+import { decodeUtf16LeBytes, decodeUtf8Bytes } from "./primitives.ts";
 import { decodeVSTWrapper } from "./vst-wrapper.ts";
 import { type Channel, classifyChannelKind, unpackRGBA, decodeLevels } from "../model/channel.ts";
 // unpackRGBA is re-used for pattern color (0x96) — same byte packing as 0x80.
@@ -141,10 +141,33 @@ const OP_TIMEMARKER_NAME = 0xcd;
 /**
  * Project-level metadata opcodes. the reference parser lists them as `project-level events`
  * events in the envelope section that fires before channels/patterns/
- * mixer. We pick up the ones `flp-info --format=json` actually emits.
+ * mixer. We pick up the ones `flp-info --format=json` exposes.
  */
+const OP_PROJECT_LOOP_ACTIVE = 0x09; // the loop-active event (BYTE, bool)
+const OP_PROJECT_SHOW_INFO = 0x0a; // the show-info event (BYTE, bool)
 const OP_PROJECT_TITLE = 0xc2; // TEXT+2, UTF-16LE null-terminated
+const OP_PROJECT_COMMENTS = 0xc3; // TEXT+3, UTF-16LE (plaintext, pre-FL-1.2.10)
+const OP_PROJECT_URL = 0xc5; // TEXT+5, UTF-16LE
+const OP_PROJECT_RTF_COMMENTS = 0xc6; // TEXT+6, UTF-16LE (RTF, FL 1.2.10+)
+const OP_PROJECT_FL_VERSION = 0xc7; // TEXT+7, ASCII "A.B.C" or "A.B.C.D"
+const OP_PROJECT_DATA_PATH = 0xca; // TEXT+10, UTF-16LE
+const OP_PROJECT_GENRE = 0xce; // TEXT+14, UTF-16LE
+const OP_PROJECT_ARTISTS = 0xcf; // TEXT+15, UTF-16LE
+const OP_PROJECT_FL_BUILD = 0x9f; // DWORD+31, uint32 LE
 const OP_PROJECT_TIMESTAMP = 0xed; // DATA+29, 16-byte the timestamp event class (2× float64 LE)
+
+function parseFlVersionAscii(value: string): ProjectMetadata["version"] | undefined {
+  // Python: `FLVersion(*tuple(int(p) for p in event.value.split('.')))`.
+  // Format is either "A.B.C" (build=None) or "A.B.C.D".
+  const parts = value.split(".").map((p) => Number(p));
+  if (parts.length < 3 || parts.some((n) => !Number.isFinite(n))) return undefined;
+  return {
+    major: parts[0]!,
+    minor: parts[1]!,
+    patch: parts[2]!,
+    build: parts.length >= 4 ? parts[3]! : 0,
+  };
+}
 
 /**
  * Single pass over the event stream to pull out project metadata.
@@ -153,10 +176,61 @@ const OP_PROJECT_TIMESTAMP = 0xed; // DATA+29, 16-byte the timestamp event class
  */
 export function buildMetadata(events: readonly FLPEvent[]): ProjectMetadata {
   const out: ProjectMetadata = {};
+  let flBuild: number | undefined;
   for (const ev of events) {
     if (ev.opcode === OP_PROJECT_TITLE && ev.kind === "blob" && out.title === undefined) {
-      const title = decodeUtf16LeBytes(ev.payload);
-      if (title.length > 0) out.title = title;
+      const s = decodeUtf16LeBytes(ev.payload);
+      if (s.length > 0) out.title = s;
+      continue;
+    }
+    if (ev.opcode === OP_PROJECT_ARTISTS && ev.kind === "blob" && out.artists === undefined) {
+      const s = decodeUtf16LeBytes(ev.payload);
+      if (s.length > 0) out.artists = s;
+      continue;
+    }
+    if (ev.opcode === OP_PROJECT_GENRE && ev.kind === "blob" && out.genre === undefined) {
+      const s = decodeUtf16LeBytes(ev.payload);
+      if (s.length > 0) out.genre = s;
+      continue;
+    }
+    if (ev.opcode === OP_PROJECT_URL && ev.kind === "blob" && out.url === undefined) {
+      const s = decodeUtf16LeBytes(ev.payload);
+      if (s.length > 0) out.url = s;
+      continue;
+    }
+    if (ev.opcode === OP_PROJECT_DATA_PATH && ev.kind === "blob" && out.dataPath === undefined) {
+      const s = decodeUtf16LeBytes(ev.payload);
+      if (s.length > 0) out.dataPath = s;
+      continue;
+    }
+    if (ev.opcode === OP_PROJECT_COMMENTS && ev.kind === "blob" && out.comments === undefined) {
+      const s = decodeUtf16LeBytes(ev.payload);
+      if (s.length > 0) out.comments = s;
+      continue;
+    }
+    if (ev.opcode === OP_PROJECT_RTF_COMMENTS && ev.kind === "blob" && out.comments === undefined) {
+      // Prefer plaintext `0xC3` if both are present (first-wins order).
+      const s = decodeUtf16LeBytes(ev.payload);
+      if (s.length > 0) out.comments = s;
+      continue;
+    }
+    if (ev.opcode === OP_PROJECT_FL_VERSION && ev.kind === "blob" && out.version === undefined) {
+      // ASCII (subset of UTF-8), e.g. "25.2.4" or "25.2.4.4960".
+      const s = decodeUtf8Bytes(ev.payload);
+      const v = parseFlVersionAscii(s);
+      if (v !== undefined) out.version = v;
+      continue;
+    }
+    if (ev.opcode === OP_PROJECT_FL_BUILD && ev.kind === "u32") {
+      flBuild = ev.value;
+      continue;
+    }
+    if (ev.opcode === OP_PROJECT_LOOP_ACTIVE && ev.kind === "u8" && out.looped === undefined) {
+      out.looped = ev.value !== 0;
+      continue;
+    }
+    if (ev.opcode === OP_PROJECT_SHOW_INFO && ev.kind === "u8" && out.showInfo === undefined) {
+      out.showInfo = ev.value !== 0;
       continue;
     }
     if (ev.opcode === OP_PROJECT_TIMESTAMP && ev.kind === "blob" && out.createdOn === undefined) {
@@ -167,6 +241,11 @@ export function buildMetadata(events: readonly FLPEvent[]): ProjectMetadata {
       }
       continue;
     }
+  }
+  // If the 0xC7 FL-version string lacked a 4th (build) component,
+  // fall back to the 0x9F FL-build uint32 when present.
+  if (out.version !== undefined && out.version.build === 0 && flBuild !== undefined) {
+    out.version = { ...out.version, build: flBuild };
   }
   return out;
 }
