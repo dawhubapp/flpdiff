@@ -117,3 +117,9 @@ export {
   compareProjectsJson,
   compareProjects,
 } from "./diff/comparator.ts";
+export {
+  describePositionDelta,
+  notePitchLabel,
+  pythonGFormat,
+  diffNotes,
+} from "./diff/note-diff.ts";
