@@ -227,6 +227,23 @@ export type AutomationPoint = {
 };
 
 /**
+ * Python's round-half-to-even (banker's rounding). JavaScript's
+ * `Math.round` rounds half up (0.5 → 1) but Python's built-in
+ * `round()` uses banker's (0.5 → 0, 1.5 → 2). Automation-point
+ * positions go through `round(float(position))` in the reference
+ * Python output; match that rounding so a 0.5 doesn't drift to 1
+ * on the TS side.
+ */
+function pythonRound(x: number): number {
+  const floor = Math.floor(x);
+  const frac = x - floor;
+  if (frac < 0.5) return floor;
+  if (frac > 0.5) return floor + 1;
+  // Exactly 0.5: round to even.
+  return floor % 2 === 0 ? floor : floor + 1;
+}
+
+/**
  * Decode a `0xEA` channel-automation payload into keyframes.
  * Payload layout:
  *
@@ -264,7 +281,7 @@ export function decodeAutomationPoints(payload: Uint8Array): AutomationPoint[] {
     position += offset;
     const value = view.getFloat64(p + 8, true);
     const tension = view.getFloat32(p + 16, true);
-    out[i] = { position: Math.round(position), value, tension };
+    out[i] = { position: pythonRound(position), value, tension };
   }
   return out;
 }

@@ -418,12 +418,12 @@ export function buildChannels(
       continue;
     }
     if (ev.opcode === OP_CHANNEL_SAMPLE_PATH && ev.kind === "blob") {
-      current.sample_path = decodeUtf16LeBytes(ev.payload);
+      current.sample_path = decodeTextEvent(ev.payload, legacy);
       continue;
     }
     if (ev.opcode === OP_PLUGIN_INTERNAL_NAME && ev.kind === "blob" && current.plugin === undefined) {
       sawPluginEvent.add(current.iid);
-      const internalName = decodeUtf16LeBytes(ev.payload);
+      const internalName = decodeTextEvent(ev.payload, legacy);
       // Sampler channels emit an empty 0xC9 as a placeholder; treat
       // that as "no plugin" so the field stays undefined.
       if (internalName.length > 0) current.plugin = { internalName };
@@ -603,7 +603,7 @@ export function buildMixerInserts(
       // every insert boundary). Callers that want "user-assigned
       // name only" should filter by `name.length > 0` (e.g. Pass 1's
       // `named_inserts`).
-      pendingInsert.name = decodeUtf16LeBytes(ev.payload);
+      pendingInsert.name = decodeTextEvent(ev.payload, legacy);
       continue;
     }
     if (ev.opcode === OP_INSERT_COLOR && ev.kind === "u32" && pendingInsert.color === undefined) {
@@ -818,7 +818,9 @@ export function buildArrangements(
   events: readonly FLPEvent[],
   channels: readonly { iid: number }[] = [],
   patterns: readonly { id: number }[] = [],
+  metadata?: ProjectMetadata,
 ): Arrangement[] {
+  const legacy = isLegacyText(metadata);
   const channelIids = new Set(channels.map((c) => c.iid));
   const patternIds = new Set(patterns.map((p) => p.id));
 
@@ -855,7 +857,7 @@ export function buildArrangements(
     }
     if (!current) continue;
     if (ev.opcode === OP_ARRANGEMENT_NAME && ev.kind === "blob" && current.name === undefined) {
-      current.name = decodeUtf16LeBytes(ev.payload);
+      current.name = decodeTextEvent(ev.payload, legacy);
       continue;
     }
     if (ev.opcode === OP_TRACK_DATA && ev.kind === "blob") {
@@ -868,7 +870,7 @@ export function buildArrangements(
       // recently-pushed track. FL emits this event only when the
       // user has set a custom name; default tracks get no 0xEF.
       const last = current.tracks[current.tracks.length - 1];
-      if (last) last.name = decodeUtf16LeBytes(ev.payload);
+      if (last) last.name = decodeTextEvent(ev.payload, legacy);
       continue;
     }
     if (ev.opcode === OP_PLAYLIST && ev.kind === "blob") {
@@ -884,7 +886,7 @@ export function buildArrangements(
       continue;
     }
     if (ev.opcode === OP_TIMEMARKER_NAME && ev.kind === "blob" && pendingMarker) {
-      pendingMarker.name = decodeUtf16LeBytes(ev.payload);
+      pendingMarker.name = decodeTextEvent(ev.payload, legacy);
       continue;
     }
     if (ev.opcode === OP_TIMEMARKER_NUMERATOR && ev.kind === "u8" && pendingMarker) {
