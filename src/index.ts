@@ -31,6 +31,7 @@ export {
   countActiveSlots,
   formatMixerSummary,
   decodeInsertFlags,
+  decodeInsertRouting,
   decodeMixerParams,
 } from "./model/mixer-insert.ts";
 export type { Pattern, Note, Controller } from "./model/pattern.ts";

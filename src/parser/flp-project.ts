@@ -3,7 +3,7 @@ import type { ISerialInput } from "typed-binary";
 import { annotateRead, FLPParseError } from "./errors.ts";
 import { flpEvent, type FLPEvent } from "./event.ts";
 import { decodeUtf16LeBytes } from "./primitives.ts";
-import { buildChannels, buildMixerInserts, buildPatterns, buildArrangements, buildMetadata } from "./project-builder.ts";
+import { buildChannels, buildMixerInserts, buildPatterns, buildArrangements, buildMetadata, collectInsertRouting } from "./project-builder.ts";
 import type { Channel } from "../model/channel.ts";
 import type { MixerInsert } from "../model/mixer-insert.ts";
 import type { Pattern } from "../model/pattern.ts";
@@ -31,6 +31,23 @@ export type FLPProject = {
   inserts: MixerInsert[];
   patterns: Pattern[];
   arrangements: Arrangement[];
+  /**
+   * Project-level routing bit-stream decoded from opcode `0xE7`.
+   * FL emits a small number of these events (often just one) — a
+   * dense byte array where each byte is a boolean flag.
+   *
+   * This is **not** a per-insert matrix. The bits pair with
+   * MixerParams records whose id ≥ 64 (RouteVolStart): for each
+   * such record the next flag from the stream says whether that
+   * route is active. We keep the raw byte order here so a future
+   * per-insert projection can reproduce the same pairing.
+   *
+   * Kept as TS-internal enrichment only — Python's `flp-info` JSON
+   * emits `routes_to: []` for every insert (a known limitation of
+   * the reference adapter). Our presentation layer matches that
+   * empty list so Pass 2 parity stays green.
+   */
+  insertRouting: boolean[];
 };
 
 const FLHD_MAGIC = [0x46, 0x4c, 0x68, 0x64]; // "FLhd"
@@ -97,7 +114,8 @@ export function parseFLPFile(buffer: ArrayBufferLike): FLPProject {
     const inserts = buildMixerInserts(events, metadata);
     const patterns = buildPatterns(events, metadata);
     const arrangements = buildArrangements(events, channels, patterns, metadata);
-    return { header, events, metadata, channels, inserts, patterns, arrangements };
+    const insertRouting = collectInsertRouting(events);
+    return { header, events, metadata, channels, inserts, patterns, arrangements, insertRouting };
   });
 }
 

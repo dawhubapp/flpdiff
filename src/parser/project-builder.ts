@@ -8,6 +8,7 @@ import {
   type MixerSlot,
   type MixerParamRecord,
   decodeInsertFlags,
+  decodeInsertRouting,
   decodeMixerParams,
 } from "../model/mixer-insert.ts";
 import { type Pattern, decodeNotes, decodeControllers } from "../model/pattern.ts";
@@ -103,6 +104,11 @@ const OP_INSERT_INPUT = 0x9a;
  * 4 reserved + uint32 flags + 4 reserved.
  */
 const OP_INSERT_FLAGS = 0xec;
+/**
+ * Project-level routing bit-stream — one or more dense bool-byte
+ * arrays. Collected at the top level; see `collectInsertRouting`.
+ */
+const OP_INSERT_ROUTING = 0xe7;
 /**
  * Project-level MixerParams blob. Carries all per-insert /
  * per-slot "MixerParams" records in a single payload. Record
@@ -220,10 +226,34 @@ function parseFlVersionAscii(value: string): ProjectMetadata["version"] | undefi
  * Two-pass scan over the event stream to pull out project metadata.
  * First pass determines the FL version from `0xC7` (ASCII) so we know
  * which encoding to apply to the other text events — pre-FL-11.5
- * files use ASCII, later files use UTF-16LE (matches the reference parser's
- * `str_type = UnicodeEvent if [major,minor] >= [11,5] else AsciiEvent`).
- * Second pass reads every other project events event with the right codec.
+ * files use ASCII, later files use UTF-16LE. Second pass reads every
+ * other project-level event with the right codec.
  */
+/**
+ * Collect every `0xE7` insert-routing payload in stream order and
+ * concatenate into a single `boolean[]`.
+ *
+ * FL typically emits one 0xE7 event for the mixer, but some files
+ * split the routing stream across several events (observed:
+ * three back-to-back at 12, 22, and 18 bytes on one fixture).
+ * Semantically they form one bit-stream paired with the project's
+ * MixerParams RouteVolStart records. Concatenating in stream order
+ * preserves the pairing for any downstream consumer.
+ */
+export function collectInsertRouting(events: readonly FLPEvent[]): boolean[] {
+  const parts: boolean[][] = [];
+  for (const ev of events) {
+    if (ev.opcode === OP_INSERT_ROUTING && ev.kind === "blob") {
+      parts.push(decodeInsertRouting(ev.payload));
+    }
+  }
+  if (parts.length === 0) return [];
+  if (parts.length === 1) return parts[0]!;
+  const out: boolean[] = [];
+  for (const p of parts) for (const b of p) out.push(b);
+  return out;
+}
+
 export function buildMetadata(events: readonly FLPEvent[]): ProjectMetadata {
   const out: ProjectMetadata = {};
   let flBuild: number | undefined;

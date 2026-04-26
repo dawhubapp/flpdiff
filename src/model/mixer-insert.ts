@@ -92,13 +92,14 @@ export type InsertFlags = {
  *   6..7   channel_data (uint16 LE): (insert_idx << 6) | slot_idx
  *   8..11  msg (int32 LE) — parameter value
  *
- * **Known limitation**: FL 25's `insert_idx` packing is sparse and
- * does NOT cleanly map to the visible insert indices (0..17). A
- * single base_empty save contains records for insert_idx values like
- * 0, 53, 64..80 — reflecting some internal FL allocation scheme we
- * haven't reverse-engineered yet. The parser exposes raw records via
- * `decodeMixerParams(payload)` but does NOT attribute them back to
- * `MixerInsert.slots[].enabled` / `.mix` pending further work.
+ * **Attribution**: `decodeMixerParams(payload)` returns raw records;
+ * `buildMixerInserts` walks them and writes `MixerInsert.{pan,volume,
+ * stereoSeparation}` and `MixerSlot.{enabled,mix}` keyed by the
+ * unpacked `(insertIdx, slotIdx)` pair. Records whose `insertIdx`
+ * falls outside `[0, inserts.length)` are silently dropped — FL emits
+ * records for pre-allocated insert slots (indices like 53, 64..80)
+ * that aren't surfaced via the 0x93 insert-begin marker; those stay
+ * latent rather than creating phantom inserts.
  */
 export type MixerParamRecord = {
   id: number;
@@ -117,6 +118,25 @@ export function decodeMixerParams(payload: Uint8Array): MixerParamRecord[] {
     const msg = view.getInt32(p + 8, true);
     out.push({ id, insertIdx: (cd >> 6) & 0x7f, slotIdx: cd & 0x3f, msg });
   }
+  return out;
+}
+
+/**
+ * Decode the project-level insert-routing payload at opcode `0xE7`.
+ * The payload is a dense byte array where each byte is a bool flag:
+ * position `i` is `true` ⇔ this insert sends audio to insert index
+ * `i`. FL writes one flag per insert *position* in the mixer including
+ * the master and latent slots, so the array length equals FL's
+ * internal `max_inserts + 1` (typically 127 on FL 25 projects even
+ * though only ~18 are visible).
+ *
+ * We return a plain `boolean[]` preserving FL's byte order; callers
+ * can derive the subset of "real" target indices by intersecting
+ * with the visible `inserts` range.
+ */
+export function decodeInsertRouting(payload: Uint8Array): boolean[] {
+  const out: boolean[] = new Array(payload.byteLength);
+  for (let i = 0; i < payload.byteLength; i++) out[i] = payload[i] !== 0;
   return out;
 }
 

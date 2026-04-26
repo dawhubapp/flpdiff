@@ -6,6 +6,7 @@ import {
   countActiveSlots,
   formatMixerSummary,
   decodeMixerParams,
+  decodeInsertRouting,
   type MixerInsert,
 } from "../src/index.ts";
 
@@ -182,5 +183,31 @@ describe("Slot plugin names (opcode 0xCB in slot scope) — oracle parity", () =
 
     const empty = await insertsOf("base_empty.flp");
     expect(formatMixerSummary(empty)).toBe("18 active inserts");
+  });
+});
+
+describe("InsertRouting decoder (opcode 0xE7) — project-level bit-stream", () => {
+  test("empty payload yields empty array", () => {
+    expect(decodeInsertRouting(new Uint8Array(0))).toEqual([]);
+  });
+
+  test("bool-per-byte: 0 → false, non-zero → true", () => {
+    expect(decodeInsertRouting(new Uint8Array([0, 1, 0, 2, 0, 255]))).toEqual([
+      false,
+      true,
+      false,
+      true,
+      false,
+      true,
+    ]);
+  });
+
+  test.each(ALL_FIXTURES)("%s: routing stream present for the master insert", async (name) => {
+    const buf = await Bun.file(resolve(CORPUS_DIR, name)).arrayBuffer();
+    const proj = parseFLPFile(buf);
+    // FL 25 base fixtures emit exactly one 0xE7 event of 18 bytes
+    // (one flag per visible insert). Concatenated at the project
+    // level, `insertRouting.length` equals 18.
+    expect(proj.insertRouting.length).toBe(18);
   });
 });
