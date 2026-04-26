@@ -49,6 +49,46 @@ export type {
 export { buildProjectSummary } from "./summary.ts";
 export type { FlpInfoJson } from "./presentation/flp-info.ts";
 export { toFlpInfoJson } from "./presentation/flp-info.ts";
+export type {
+  Change,
+  ChangeKind,
+  NoteChange,
+  NoteChangeKind,
+  AutomationChange,
+  AutomationChangeKind,
+  OpaqueChange,
+  ChannelDiff,
+  PatternDiff,
+  MixerInsertDiff,
+  MixerDiff,
+  ClipMoveGroup,
+  ClipBulkGroup,
+  ClipModifyGroup,
+  TrackDiff,
+  ArrangementDiff,
+  DiffSummary,
+  DiffResult,
+} from "./diff/diff-model.ts";
+export {
+  makeChange,
+  makeNoteChange,
+  makeAutomationChange,
+  makeOpaqueChange,
+  makeChannelDiff,
+  makePatternDiff,
+  makeMixerInsertDiff,
+  makeMixerDiff,
+  makeClipMoveGroup,
+  makeClipBulkGroup,
+  makeClipModifyGroup,
+  makeTrackDiff,
+  makeArrangementDiff,
+  makeDiffSummary,
+  isMixerDiffEmpty,
+  diffSummaryHasChanges,
+  diffResultIsIdentical,
+  computeSummaryCounts,
+} from "./diff/diff-model.ts";
 export type { Match, MatchConfidence, ProjectMatch } from "./diff/matcher.ts";
 export {
   matchChannels,
