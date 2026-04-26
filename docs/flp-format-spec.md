@@ -149,8 +149,14 @@ output on all five FL 25 public fixtures.
 | `0xCF` | DATA (varint + bytes) | Project Artists | UTF-16LE string | Empty (2-byte null placeholder) on every committed fixture. **Not** the pattern-controllers opcode — an early mis-reading had the TS parser incorrectly pointing here until the parity harness caught it. Pattern controllers live at `0xDF`. |
 | `0xDF` | DATA (varint + bytes) | Pattern controllers | Dense array of 12-byte records | Record layout: `uint32 position`, 2 reserved bytes, `uint8 channel`, `uint8 flags`, `float32 value`. Carries per-pattern keyframe automation. TS parser had this on `0xCF` until the parity harness caught the mix-up. |
 | `0xCC` | DATA (varint + bytes) | Mixer insert name | Null-terminated UTF-16LE | User-assigned name of the currently-pending insert (the one being accumulated until the next `0x93`). Absent when the user hasn't renamed the insert (master and default inserts are unnamed). Example: `"Drums"` on `base_one_insert.flp`. Distinct opcode from `0xCB`, so no scope ambiguity. |
-| `0xE1` | DATA (varint + bytes) | MixerParams sparse blob | Dense array of 12-byte records | the MixerParams event. One large blob per project (6924 B = 577 records on `base_empty.flp`). Each record: `4 reserved + uint8 id + uint8 reserved + uint16 channel_data + int32 msg`. `insertIdx = (channel_data >> 6) & 0x7F`, `slotIdx = channel_data & 0x3F`. IDs: `0=SlotEnabled, 1=SlotMix, 64..191=RouteVol, 192=Volume, 193=Pan, 194=StereoSeparation, 208..210=EQ gains, 216..218=EQ freqs, 224..226=EQ Qs`. **FL 25's `insertIdx` packing is sparse** — records exist for indices well outside the visible 0..17 range (e.g. 53, 64..80). Mapping sparse indices to visible inserts remains open; decoder exposed as raw records via `decodeMixerParams`. |
-| `0xEC` | DATA (varint + bytes) | Insert flags bitmask (FL 25 relocation) | 12-byte fixed record | **the reference parser lists `the insert-flags event = DATA+28 = 0xDC`, but FL 25 emits at `DATA+44 = 0xEC`** — fourth self-discovered FL 25 relocation (joining 0xEE track data, 0xE0 pattern notes, 0xDB channel Levels). Payload: 4 reserved + `uint32 flags` (at offset 4) + 4 reserved. Bit positions: `0=PolarityReversed, 1=SwapLeftRight, 2=EnableEffects, 3=Enabled, 4=DisableThreadedProcessing, 6=DockMiddle, 7=DockRight, 10=SeparatorShown, 11=Locked, 12=Solo, 15=AudioTrack`. Master + insert 17 default to `0x0C` (EnableEffects+Enabled); inserts 1..16 default to `0x4C` (+DockMiddle). |
+| `0xE1` | DATA (varint + bytes) | MixerParams project-wide blob | Dense array of 12-byte records | One large blob per project (6924 B = 577 records on `base_empty.flp`). Each record: `4 reserved + uint8 id + uint8 reserved + uint16 channel_data + int32 msg`. `insertIdx = (channel_data >> 6) & 0x7F`, `slotIdx = channel_data & 0x3F`. IDs: `0=SlotEnabled, 1=SlotMix, 64..191=RouteVol, 192=Volume, 193=Pan, 194=StereoSeparation, 208..210=EQ gains, 216..218=EQ freqs, 224..226=EQ Qs`. **Attribution is complete**: `buildMixerInserts` walks every record and writes `MixerInsert.{pan, volume, stereoSeparation}` (ids 192/193/194) and `MixerSlot.{enabled, mix}` (ids 0/1), dropping records whose `insertIdx` falls outside the visible-insert range (FL pre-allocates latent insert positions like 53, 64..80 that never surface via `0x93`). Presentation layer keeps `slot.enabled: true` to match a quirk of the reference Python adapter (it can't read the SlotEnabled bit out of the slot's params record); real bit is preserved internally. |
+| `0xEC` | DATA (varint + bytes) | Insert flags bitmask (FL 25 relocation) | 12-byte fixed record | FL 25 relocated this opcode from the pre-FL-25 `0xDC` to `0xEC` — fourth FL 25 relocation (joining 0xEE track data, 0xE0 pattern notes, 0xDB channel Levels). Payload: 4 reserved + `uint32 flags` (at offset 4) + 4 reserved. Bit positions: `0=PolarityReversed, 1=SwapLeftRight, 2=EnableEffects, 3=Enabled, 4=DisableThreadedProcessing, 6=DockMiddle, 7=DockRight, 10=SeparatorShown, 11=Locked, 12=Solo, 15=AudioTrack`. Master + insert 17 default to `0x0C` (EnableEffects+Enabled); inserts 1..16 default to `0x4C` (+DockMiddle). |
+| `0x0F` | BYTE (u8) | Channel IsZipped | bool | FL only emits this when the channel is collapsed / minimized in the rack — **absence ≡ `false`**. Surfaced as `Channel.zipped` for future diff use; not in Python's `flp-info` JSON output. |
+| `0x0C` | BYTE (u8) | Project main volume (legacy) | uint8 | Legacy master-volume opcode — FL 25 no longer emits it. Corpus scan (85 files) shows zero occurrences. Decoder retained for pre-FL-25 fixtures; surfaced internally as `metadata.mainVolume`. Python's `flp-info` always emits `main_volume: null` regardless of presence. |
+| `0x11` | BYTE (u8) | Project time-signature numerator | uint8 | Typical values 3 or 4. Decoded into `metadata.timeSignatureNumerator`. Python's `flp-info` always emits `time_signature: null` (its adapter never populates the field); presentation layer matches the null. |
+| `0x12` | BYTE (u8) | Project time-signature denominator | uint8 | Decoded into `metadata.timeSignatureDenominator`. |
+| `0x17` | BYTE (u8) | Project pan law | uint8 | `0 = Circular` (default), `2 = Triangular`. Non-default values observed on a handful of corpus files. Decoded into `metadata.panLaw`. Python's `flp-info` hardcodes `pan_law: 0` regardless of the event's value, so presentation layer matches the hardcoded `0` for Pass 2 parity. |
+| `0xE7` | DATA (varint + bytes) | Insert routing bit-stream | Dense byte array (bool-per-byte) | FL emits one or more of these per project. **Not a per-insert routing matrix** — the bits are paired with MixerParams `RouteVolStart` records (id ≥ 64) by index. Collected at project level as `FLPProject.insertRouting: boolean[]` in stream order. Python's `flp-info` always emits `routes_to: []` per insert (a known limitation of the reference adapter); TS presentation layer matches the empty output. |
 | `0xEE` | DATA (varint + bytes) | Per-track data blob | 70-byte binary blob | Descriptor for one playlist track within the current arrangement. FL 25 emits these in large fixed batches (500 per arrangement on a base project) regardless of whether the tracks carry clips. Count equals the arrangement's track count. Inner structure is TBD — carried as an opaque `Uint8Array` by the skeleton parser. |
 | `0xF1` | DATA (varint + bytes) | Arrangement name | Null-terminated UTF-16LE | User-assigned or default name (`"Arrangement"` on fresh FL 25 saves). Scoped to the arrangement most recently announced by `0x63`. |
 
@@ -452,3 +458,44 @@ table.
 Parity sweep after all eleven: **85/85 MATCH**. Every FL version
 (9, 11, 12, 20, 21, 24, 25) at 100% across all 85 local corpus
 files. Pass 1 (counts-and-kinds) closed.
+
+### Phase 3.3 depth — 2026-04-19 (late session)
+
+Six additional opcodes decoded as **TS-internal enrichment** (not
+surfaced in Python's `flp-info` JSON, so Pass 2 parity is
+unaffected — the data is preserved for future Phase 3.4 diff use):
+
+- `0x0F` Channel **is-zipped** (u8 bool) — absence ≡ false. Closed
+  the "muted-state" investigation in the process: there is no
+  channel-muted opcode at all; Python's `Channel.muted`
+  defaults to False; TS matches by construction (the `0x00`
+  is-enabled flag is the sole audibility signal).
+- Note `flags & 0x08` → **slide** derived bit. The sole
+  catalogued flag bit. Raw `flags` kept alongside for round-trip
+  fidelity and future bit additions.
+- `0x0C` **legacy main volume** (u8, FL 25 no longer emits) —
+  decoder retained for pre-FL-25 fixtures; `metadata.mainVolume`.
+- `0x11` / `0x12` **time-signature numerator / denominator**
+  (u8, u8) — decoded into `metadata.timeSignature{Numerator,
+  Denominator}`. Corrected an earlier "0xC0 compound blob"
+  misdiagnosis — these are direct u8 events in the project
+  header, not nested in a compound payload.
+- `0x17` **pan law** (u8, 0=Circular, 2=Triangular). Non-default
+  values observed on several corpus files.
+- `0xE7` **insert routing** (`DATA + 27`) — collected as a
+  project-level `boolean[]` stream on `FLPProject.insertRouting`.
+  Not a per-insert routing matrix; the bits are paired with
+  MixerParams `RouteVolStart` records (id ≥ 64) by index. Current
+  consumer keeps this as an unprojected stream (per-insert
+  pairing is deferred pending a use case, and Python's
+  `routes_to: []` output doesn't force the projection).
+
+Also documented: **MixerParams attribution is complete** — the
+`channel_data = (insertIdx << 6) | slotIdx` formula writes
+`MixerInsert.{pan, volume, stereoSeparation}` and
+`MixerSlot.{enabled, mix}` on every insert that falls inside the
+visible range. The earlier "attribution pending sparse→visible
+mapping" note was stale; verified on 4 real corpus files.
+
+Parity after this batch: Pass 1 **85/85**, Pass 2 **83/85** —
+both unchanged. bun test 182/182 (+16 tests from new oracles).

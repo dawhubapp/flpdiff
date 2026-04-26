@@ -330,6 +330,39 @@ presentation-layer commits:
   `0x93`/`0xEC`; a second pass finds first `0xCB` per channel
   range and overrides.
 
+### Fields decoded internally but NOT projected
+
+These live on the raw `FLPProject` / `Channel` / `Note` /
+`ProjectMetadata` types for future diff-engine use, but are
+**deliberately dropped** by `toFlpInfoJson` so Pass 2 parity
+continues to mirror Python's output:
+
+- `Channel.zipped` (opcode `0x0F`) — Python has no corresponding
+  field on its `Channel` model.
+- `Note.slide` — derived from `flags & 0x08`. Python's `Note`
+  dataclass has no `slide` field; our Note projector emits only
+  the 8 fields Python writes.
+- `Note.flags` — raw bitmask kept on the internal Note type for
+  round-trip fidelity, not projected (Python doesn't surface it).
+- `FLPProject.insertRouting` (opcode `0xE7`) — project-level
+  boolean[] stream paired with MixerParams `RouteVolStart`
+  records. Python's `routes_to` is `[]` everywhere (a known
+  limitation of the reference adapter).
+- `MixerSlot.enabled` / `MixerSlot.mix` — decoded from `0xE1`
+  MixerParams records; `enabled` hardcoded to `true` by the
+  presentation layer to mirror Python's wire output. Real bit is
+  on the internal model. `mix` isn't in Python's JSON shape at
+  all.
+- `ProjectMetadata.timeSignatureNumerator` /
+  `timeSignatureDenominator` (opcodes `0x11` / `0x12`) — Python's
+  adapter never populates `time_signature`, so presentation emits
+  `time_signature: null` always.
+- `ProjectMetadata.mainVolume` (opcode `0x0C`, legacy) — FL 25 no
+  longer emits; Python emits `main_volume: null` regardless.
+- `ProjectMetadata.panLaw` (opcode `0x17`) — Python hardcodes
+  `pan_law: 0` regardless of the event's value, so presentation
+  matches the hardcoded `0`.
+
 ### Remaining drift (2 files)
 
 1. `h1_86.flp insert[19].slots[0].plugin.vendor`: TS extracts
