@@ -9,11 +9,19 @@ confirmation** — the parser now covers enough entity metadata for
 meaningful diffs but no matching/comparator code has been written yet.
 
 **Current state:** 155 tests green, 3934 assertions, tsc clean, on
-TypeScript 6 + Bun 1.3.9 + typed-binary 4.3.3. All 5 committed FL 25
-public fixtures deep-equal match a hand-crafted oracle via
-`buildProjectSummary(project)`. Python ↔ TS parity harness (see
-`tools/parity/`) matches **85 / 85** local corpus files on Pass 1
-(counts-and-kinds shape) — every FL version 9 through 25 at 100%.
+TypeScript 6 + Bun 1.3.9 + typed-binary 4.3.3.
+
+- **5/5 public FL 25 fixtures** — hand-crafted oracle via
+  `buildProjectSummary(project)`.
+- **85/85 local corpus — Pass 1** (counts-and-kinds shape), every FL
+  version 9 through 25 at 100%.
+- **75/85 local corpus — Pass 2** (full `flp-info --format=json`
+  byte-for-byte with 1e-4 float tolerance) via the new TS
+  presentation layer at `src/presentation/flp-info.ts`. Remaining 10
+  drift files are all FL 9 edge cases (Python's coarser event-subtree
+  division attributes mixer-section 0xCB/0xCC differently) plus one
+  FL 20 plugin.vendor case (Python misses a vendor we correctly
+  extract — arguably our behaviour is more faithful).
 
 This repo is a nested git repo alongside the main Python `flpdiff`
 codebase. It exists to explore two asymmetric wins that Python cannot
@@ -166,14 +174,29 @@ ts/
 
 ## Parity harness (`tools/parity/`)
 
-Pass 1 cross-parser check: serialise both Python and TS parsers'
-output of the same file to a compact counts-and-kinds snapshot
-(PPQ, tempo, channel counts by kind, pattern / note / controller
-totals, insert / slot / track / clip / marker totals), then deep-
-compare. Results stratified by FL major version.
+Two complementary cross-parser checks against Python's
+`flp-info --format=json`.
+
+**Pass 1** (counts-and-kinds shape): serialise both parsers'
+output of the same file to a compact snapshot (PPQ, tempo, channel
+counts by kind, pattern / note / controller totals, insert / slot /
+track / clip / marker totals), then deep-compare. Results stratified
+by FL major version. **85/85 on Roman's 85-file local corpus.**
 
 ```sh
 .venv/bin/python ts/tools/parity/run_parity.py tests/corpus/local
+```
+
+**Pass 2** (full JSON byte-for-byte): runs Python's installed
+`flp-info --format=json` directly and compares against the TS
+presentation layer's output (`src/presentation/flp-info.ts` —
+`toFlpInfoJson(project)`). 1e-4 float tolerance. Stratified per FL
+major + per-field-path drift ranking for prioritisation. **75/85** —
+all 9 FL-25, 12 FL-24, 16 FL-21 files pass; 10 FL 9-era edge cases
+remain.
+
+```sh
+.venv/bin/python ts/tools/parity/run_pass2.py tests/corpus/local
 ```
 
 Current sweep: **85 / 85** MATCH — every FL version at 100%. The
@@ -229,17 +252,17 @@ FL 25   8/8   ✅
 
 ## For the next session
 
-Pass 1 parity closed (85/85). Three natural paths:
+Pass 1 and Pass 2 both landed. Three natural paths:
 
-1. **Start Phase 3.4** (diff engine port). Parser coverage is
-   robust — 85/85 real-corpus structural parity plus 5/5 public
-   oracle. Port Python's matcher + comparator + summary formatter
-   from `src/flp_diff/{matcher,comparator,summary}.py`. Four
-   sub-phases per parent SPEC.
-2. **Pass 2 parity** — value-level check with unit normalisation.
-   Catches field-level drift (e.g., a channel where both parsers
-   agree it exists and is a sampler but report different volumes).
-   Builds on the Pass 1 harness at `tools/parity/`.
+1. **Start Phase 3.4** (diff engine port). Parser coverage is very
+   solid — 85/85 Pass 1, 75/85 Pass 2, 5/5 public oracle. Port
+   Python's matcher + comparator + summary formatter from
+   `src/flp_diff/{matcher,comparator,summary}.py`. Four sub-phases
+   per parent SPEC.
+2. **Close the remaining 10 Pass 2 drifts** (all FL 9-era edge
+   cases around 0xCB/0xCC attribution). These need a second pass
+   post-walk to emulate Python's coarse event-subtree division;
+   probably another ~2-3 commits of careful work.
 3. **Keep deepening Phase 3.3** — items from the "Known open
    format work" list above (channel muted, IsZipped, note flag
    decoding). Each is ~1 commit of similar shape to recent work.
