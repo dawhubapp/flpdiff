@@ -434,11 +434,21 @@ table.
     internal-name events both PRESENT — even empty.
     `sawPluginEvent: Set<number>` tracks `0xC9` emissions; the
     reclassifier gates on membership.
+11. **First-separator swallow in `0x62` slot divide.** The last 44
+    mismatches (all `filled_slots` overcount on FL 20-25) turned
+    out to be a single attribution bug. The slot-divide step
+    treats the FIRST separator specially: it flips an
+    "already-seen" flag but does NOT yield a group. Events
+    accumulated before AND after the first `0x62` all belong to
+    slot 0 (the first yielded group ends at the SECOND separator).
+    TS used to push on every `0x62`, so `0xD5` events that
+    straddled the first `0x62` got split across two slots — a
+    phantom unnamed extra slot whenever slot 0 had >1
+    plugin-state event. Fix: per-insert `firstSlotSeen` flag;
+    first `0x62` marks seen without pushing; subsequent `0x62`
+    close the current slot and open the next; final slot flushes
+    at `0x93`.
 
-Parity sweep after all ten: 41/85 MATCH. Remaining 44 drift rows
-are all `filled_slots` overcount, caused by a the reference parser internal
-plugin-type dispatch that drops typed events not in its 10-plugin
-registry (BooBass, FruitKick, Plucked). Either a quirk we choose
-to mirror (3-entry blacklist of slot internal-names), or we accept
-the semantic delta in favour of the cleaner "any plugin state"
-signal.
+Parity sweep after all eleven: **85/85 MATCH**. Every FL version
+(9, 11, 12, 20, 21, 24, 25) at 100% across all 85 local corpus
+files. Pass 1 (counts-and-kinds) closed.

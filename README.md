@@ -12,10 +12,8 @@ meaningful diffs but no matching/comparator code has been written yet.
 TypeScript 6 + Bun 1.3.9 + typed-binary 4.3.3. All 5 committed FL 25
 public fixtures deep-equal match a hand-crafted oracle via
 `buildProjectSummary(project)`. Python ↔ TS parity harness (see
-`tools/parity/`) matches **41 / 85** local corpus files on Pass 1
-(counts-and-kinds shape); remaining 44 files show the same
-`filled_slots` drift driven by a the reference parser internal plugin-type
-dispatch — not a TS bug, documented below.
+`tools/parity/`) matches **85 / 85** local corpus files on Pass 1
+(counts-and-kinds shape) — every FL version 9 through 25 at 100%.
 
 This repo is a nested git repo alongside the main Python `flpdiff`
 codebase. It exists to explore two asymmetric wins that Python cannot
@@ -178,45 +176,38 @@ compare. Results stratified by FL major version.
 .venv/bin/python ts/tools/parity/run_parity.py tests/corpus/local
 ```
 
-Current sweep: **41 / 85** MATCH. The harness run turned up and
-we fixed:
+Current sweep: **85 / 85** MATCH — every FL version at 100%. The
+harness run turned up and we fixed:
 
-| # | Bug                                                                                             | Impact                                   |
-|---|-------------------------------------------------------------------------------------------------|------------------------------------------|
-| 1 | Playlist opcode `0xD9 → 0xE9` (the reference parser canonical `DATA+25`)                                       | `clips_total=0` on every FL 21+ file    |
-| 2 | Orphan-clip filter (`track_rvidx > 499` or missing channel/pattern ref)                          | Clip over-count by ~3× on real files    |
-| 3 | Sampler reclassification — `type=Instrument + SamplePath + empty 0xC9 → Sampler` per the reference parser rule  | Channel kinds off by 3–5× on real files |
-| 4 | `hasPlugin` signal on mixer slots (key off 0xD5, not 0xCB)                                      | `filled_slots` undercount by 60–70%     |
-| 5 | Legacy tempo fallback (`0x42` coarse + `0x5D` fine)                                             | Every FL 9/11 file showed `tempo: None` |
-| 6 | UTF-16LE 1-byte payloads → "" (FL 9 emits single-null placeholders)                             | 105 "named inserts" on every FL 9 file  |
-| 7 | Controllers opcode `0xCF → 0xDF`                                                                 | Controllers never fired (3261 missed)   |
-| 8 | FL 9 1-slot-per-insert layout (no 0x62 markers → push at 0x93)                                  | `filled_slots=0` on 4 FL 9 files        |
-| 9 | Channel scope exits on mixer-section opcodes (`0x93` / `0xCC` / `0xEC`)                         | Phantom plugin names bleeding from mixer |
-| 10| Stricter reclassification (require 0xC9 event present, not just "plugin undefined")             | Over-flipping on pre-FL-12 layouts      |
+| #  | Bug                                                                                             | Impact                                        |
+|----|-------------------------------------------------------------------------------------------------|-----------------------------------------------|
+| 1  | Playlist opcode `0xD9 → 0xE9` (the reference parser canonical `DATA+25`)                                       | `clips_total=0` on every FL 21+ file         |
+| 2  | Orphan-clip filter (`track_rvidx > 499` or missing channel/pattern ref)                          | Clip over-count by ~3× on real files         |
+| 3  | Sampler reclassification — `type=Instrument + SamplePath + empty 0xC9 → Sampler` per the reference parser rule  | Channel kinds off by 3–5× on real files      |
+| 4  | `hasPlugin` signal on mixer slots (key off 0xD5, not 0xCB)                                      | `filled_slots` undercount by 60–70%          |
+| 5  | Legacy tempo fallback (`0x42` coarse + `0x5D` fine)                                             | Every FL 9/11 file showed `tempo: None`      |
+| 6  | UTF-16LE 1-byte payloads → "" (FL 9 emits single-null placeholders)                             | 105 "named inserts" on every FL 9 file       |
+| 7  | Controllers opcode `0xCF → 0xDF`                                                                | Controllers never fired (3261 missed)        |
+| 8  | FL 9 1-slot-per-insert layout (no 0x62 markers → push at 0x93)                                  | `filled_slots=0` on 4 FL 9 files             |
+| 9  | Channel scope exits on mixer-section opcodes (`0x93` / `0xCC` / `0xEC`)                         | Phantom plugin names bleeding from mixer     |
+| 10 | Stricter reclassification (require 0xC9 event present, not just "plugin undefined")             | Over-flipping on pre-FL-12 layouts           |
+| 11 | First-separator swallow in slot `divide` (mirror the reference parser: push on 2nd+ `0x62`, flush at `0x93`)   | `filled_slots` phantom-slot over-count on FL 20-25 |
 
-Per-version match after all ten fixes:
+Per-version match after all eleven fixes:
 
 ```
 FL 9   14/14  ✅
 FL 11   2/2   ✅
-FL 12   0/1
-FL 20  18/32
-FL 21   4/16
-FL 24   3/12
-FL 25   0/8
+FL 12   1/1   ✅
+FL 20  32/32  ✅
+FL 21  16/16  ✅
+FL 24  12/12  ✅
+FL 25   8/8   ✅
 ```
 
 ## Known open format work
 
-1. **`filled_slots` drift — 44 files.** TS consistently OVER-counts
-   Python by ~20%. Cause: the reference parser's `PluginProp.__get__` dispatches
-   through a hard-coded list of 10 plugin types (VSTPlugin + 9 Fruity
-   natives); slots whose typed `0xD5` event matches a plugin class
-   NOT on that list fall through to `None` and get dropped from
-   `slot.plugin is not None`. Our `hasPlugin` count is arguably
-   more correct — it reports every slot with any plugin state. Only
-   matters if Phase 3.4 needs byte-for-byte `slot.plugin` parity.
-2. **MixerParams sparse-insert-idx mapping** — `0xE1` records use
+1. **MixerParams sparse-insert-idx mapping** — `0xE1` records use
    indices like `0, 53, 64..80` that don't map 1:1 to visible insert
    indices 0..17. Raw decoder ships (`decodeMixerParams`); attribution
    to `MixerInsert.slots[].enabled/mix` awaits mapping work.
@@ -231,23 +222,26 @@ FL 25   0/8
    playlist clips or `0x94` time-markers; decoders are unit-tested via
    crafted payloads and will activate automatically when a fixture
    exercises them.
+7. **Pass 2 parity** — value-level (channel volume, pan, color, insert
+   routing, note properties) with unit normalisation between Python's
+   normalised-float space and FL's raw integer storage. Pass 1
+   (counts-and-kinds shape) is at 85/85 and can be deferred here.
 
 ## For the next session
 
-Three natural paths:
+Pass 1 parity closed (85/85). Three natural paths:
 
-1. **Keep closing parity drift.** 44 files remain (FL 20-25). The
-   dominant remaining drift is `filled_slots`, which is a the reference parser
-   quirk — we can match it by shipping a blacklist of plugin
-   internal-names whose typed events the reference parser drops at the `Slot.plugin`
-   property (BooBass, FruitKick, Plucked). Cheap; would push parity
-   from 41/85 toward 80+/85.
-2. **Start Phase 3.4** (diff engine port). Parser coverage is
-   robust — 41/85 real-corpus structural parity plus 5/5 public
-   oracle is a reasonable foundation. Port Python's matcher +
-   comparator + summary formatter from `src/flp_diff/`.
-3. **Keep deepening Phase 3.3** — items 2-6 in the "Known open
-   format work" list above (channel muted, note flag decoding,
-   etc.). Each is ~1 commit of similar shape to recent work.
+1. **Start Phase 3.4** (diff engine port). Parser coverage is
+   robust — 85/85 real-corpus structural parity plus 5/5 public
+   oracle. Port Python's matcher + comparator + summary formatter
+   from `src/flp_diff/{matcher,comparator,summary}.py`. Four
+   sub-phases per parent SPEC.
+2. **Pass 2 parity** — value-level check with unit normalisation.
+   Catches field-level drift (e.g., a channel where both parsers
+   agree it exists and is a sampler but report different volumes).
+   Builds on the Pass 1 harness at `tools/parity/`.
+3. **Keep deepening Phase 3.3** — items from the "Known open
+   format work" list above (channel muted, IsZipped, note flag
+   decoding). Each is ~1 commit of similar shape to recent work.
 
 Roman's been explicit that Phase 3.4 waits for confirmation.
