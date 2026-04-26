@@ -25,7 +25,12 @@ Initial public release.
 - **Git integration**:
   - `flpdiff git-setup [--global] [--textconv] [--lfs]` — configures
     `.gitattributes` + git config so `git diff *.flp` produces semantic
-    output. Works with Git LFS.
+    output. Works with Git LFS. Verifies the config landed before
+    exiting; `FAILED` status + stderr exit-2 on silent-failure modes.
+  - `flpdiff git-verify` — diagnose the current repo's setup (inside
+    a git repo? attributes rule present? driver configured? binary
+    resolves and runs?). Useful after moving the binary, changing
+    PATH, or when `git diff` gives unexpected empty output.
   - `flpdiff git-driver` — external-diff protocol entry (invoked by
     git, not directly by users).
 - **Clip-collapse grouping**: when a user nudges / duplicates /

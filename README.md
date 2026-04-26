@@ -65,6 +65,7 @@ flpdiff info <file.flp> [--format F]        Inspect a single FLP
                                               F ∈ text (default) | json | canonical
 flpdiff git-setup [--global] [--textconv] [--lfs]
                                             Configure git to diff .flp files semantically
+flpdiff git-verify                          Diagnose the current repo's flpdiff git setup
 flpdiff git-driver <args>                   Internal: git external-diff entry
 flpdiff --help | --version
 ```
@@ -98,18 +99,50 @@ Turn `.flp` files into first-class diffable content in any repo:
 
 ```sh
 $ flpdiff git-setup
-flpdiff git-setup: scope=local, mode=command
+flpdiff git-setup (OK): scope=local, mode=command
   attributes: /path/to/repo/.gitattributes (updated)
+  executable: /usr/local/bin/flpdiff
   $ git config --local diff.flp.command /usr/local/bin/flpdiff git-driver
   $ git config --local --unset diff.flp.textconv
+  verify with: flpdiff git-verify
   try: git diff <changed.flp>
 ```
 
-Now `git diff v1.flp v2.flp` (or `git log -p`, `git show`, etc.) shows the
-semantic diff instead of the useless "Binary files differ" line. Works
-globally (`--global`), with [Git LFS][lfs] (`--lfs`), or via git's native
-line-diff on the canonical text (`--textconv` — cacheable, slightly
-less rich output).
+Once configured, **any** git command that normally shows diffs now
+shows a semantic FLP diff instead of "Binary files differ":
+
+```sh
+git diff                    # after editing + saving an FLP in FL Studio
+git diff HEAD~1 HEAD        # what changed in the last commit
+git log -p my_track.flp     # full history
+git show <sha>              # what a specific commit did
+```
+
+Options:
+
+- `--global` writes to your global git config + global attributes file
+  so every repo on your machine gets the FLP diff.
+- `--textconv` uses git's native line-based diff on the canonical text
+  output (cacheable, works well with git blame, slightly less rich
+  than the default `command` mode).
+- `--lfs` also tracks `*.flp` via [Git LFS][lfs] — useful for large
+  sample-heavy projects. Implies repo-local scope.
+
+Run `flpdiff git-verify` to sanity-check the current repo's setup
+(checks you're inside a git repo, `.gitattributes` has the FLP rule,
+`diff.flp.command` is set, and the configured binary executes).
+
+#### Diffing two files not tracked in a repo
+
+The `git diff` driver fires on **tracked changes** inside a repo. To
+compare two arbitrary FLP files that aren't version-controlled, use
+`git diff --no-index` (forces the two-file compare mode):
+
+```sh
+git diff --no-index v1.flp v2.flp
+# or bypass git entirely:
+flpdiff v1.flp v2.flp
+```
 
 [lfs]: https://git-lfs.com
 
