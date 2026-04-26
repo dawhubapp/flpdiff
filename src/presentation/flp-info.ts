@@ -397,14 +397,15 @@ function parseFlVersion(banner: string | undefined): FLVersionJson {
 }
 
 function toMetadata(project: FLPProject, tempo: number): MetadataJson {
-  // TODO: decode title/artists/genre/comments/format/created_on/time_spent/
-  // data_path/time_signature/main_pitch/main_volume/pan_law/looped/show_info/url.
-  // All emit Python defaults for now so the shape matches and the runner
+  // TODO: decode artists/genre/comments/format/data_path/time_signature/
+  // main_pitch/main_volume/pan_law/looped/show_info/url. Those emit
+  // Python defaults for now so the shape matches and the runner
   // flags drift per-field.
   const version = parseFlVersion(getBanner(project));
+  const m = project.metadata;
   return {
     _type: "ProjectMetadata",
-    title: "",
+    title: m.title ?? "",
     artists: "",
     genre: "",
     comments: "",
@@ -419,10 +420,42 @@ function toMetadata(project: FLPProject, tempo: number): MetadataJson {
     show_info: false,
     url: null,
     data_path: { _type: "path", value: "." },
-    created_on: null,
-    time_spent: null,
+    created_on: datetimeToJson(m.createdOn),
+    time_spent: timedeltaToJson(m.timeSpent),
     version,
   };
+}
+
+function datetimeToJson(d: Date | undefined): DatetimeJson | null {
+  if (d === undefined) return null;
+  // Python emits a naive local-time ISO like "2026-04-16T17:25:26.422000"
+  // (no 'Z', 6 fractional digits). Our Date is UTC-based. The
+  // reference timestamp decoder returns *local* datetime — hence
+  // Python's ISO has no timezone suffix. We need to match that
+  // byte-for-byte.
+  //
+  // Use the components of the Date in UTC (since we constructed via
+  // `Date.UTC(1899, 11, 30) + days*ms` — all UTC), strip 'Z', and pad
+  // microseconds to 6 digits for Python's `datetime.isoformat()` format.
+  const pad = (n: number, w = 2) => n.toString().padStart(w, "0");
+  const year = d.getUTCFullYear();
+  const month = pad(d.getUTCMonth() + 1);
+  const day = pad(d.getUTCDate());
+  const hh = pad(d.getUTCHours());
+  const mm = pad(d.getUTCMinutes());
+  const ss = pad(d.getUTCSeconds());
+  const ms = pad(d.getUTCMilliseconds(), 3);
+  // Python's fractional part is microseconds (6 digits); we have ms
+  // precision, zero-pad to match.
+  const iso = `${year}-${month}-${day}T${hh}:${mm}:${ss}.${ms}000`;
+  return { _type: "datetime", iso };
+}
+
+function timedeltaToJson(
+  t: { seconds: number } | undefined,
+): TimedeltaJson | null {
+  if (t === undefined) return null;
+  return { _type: "timedelta", seconds: t.seconds };
 }
 
 function getBanner(project: FLPProject): string | undefined {

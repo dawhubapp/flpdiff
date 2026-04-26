@@ -6,6 +6,7 @@ import { type Channel, classifyChannelKind, unpackRGBA, decodeLevels } from "../
 import { type MixerInsert, type MixerSlot, decodeInsertFlags } from "../model/mixer-insert.ts";
 import { type Pattern, decodeNotes, decodeControllers } from "../model/pattern.ts";
 import { type Arrangement, type TimeMarker, decodeClips, decodeTimeMarkerPosition } from "../model/arrangement.ts";
+import { type ProjectMetadata, decodeTimestamp } from "../model/metadata.ts";
 
 /**
  * Opcode constants for the entity-boundary events. Each is a format fact
@@ -136,6 +137,39 @@ const OP_TIMEMARKER_NUMERATOR = 0x21;
 const OP_TIMEMARKER_DENOMINATOR = 0x22;
 /** Time-marker name (UTF-16LE null-terminated). */
 const OP_TIMEMARKER_NAME = 0xcd;
+
+/**
+ * Project-level metadata opcodes. the reference parser lists them as `project-level events`
+ * events in the envelope section that fires before channels/patterns/
+ * mixer. We pick up the ones `flp-info --format=json` actually emits.
+ */
+const OP_PROJECT_TITLE = 0xc2; // TEXT+2, UTF-16LE null-terminated
+const OP_PROJECT_TIMESTAMP = 0xed; // DATA+29, 16-byte the timestamp event class (2× float64 LE)
+
+/**
+ * Single pass over the event stream to pull out project metadata.
+ * Doesn't need scope tracking — these opcodes are unique at the
+ * project level and don't overlap channel/mixer scopes.
+ */
+export function buildMetadata(events: readonly FLPEvent[]): ProjectMetadata {
+  const out: ProjectMetadata = {};
+  for (const ev of events) {
+    if (ev.opcode === OP_PROJECT_TITLE && ev.kind === "blob" && out.title === undefined) {
+      const title = decodeUtf16LeBytes(ev.payload);
+      if (title.length > 0) out.title = title;
+      continue;
+    }
+    if (ev.opcode === OP_PROJECT_TIMESTAMP && ev.kind === "blob" && out.createdOn === undefined) {
+      const ts = decodeTimestamp(ev.payload);
+      if (ts !== undefined) {
+        out.createdOn = ts.createdOn;
+        out.timeSpent = ts.timeSpent;
+      }
+      continue;
+    }
+  }
+  return out;
+}
 
 /**
  * Walks the event stream and accumulates channels.
