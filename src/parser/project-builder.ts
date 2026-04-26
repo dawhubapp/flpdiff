@@ -373,17 +373,16 @@ export function buildChannels(
       scope = "slot";
       continue;
     }
-    // Any mixer-section opcode closes channel scope for good. Without
-    // this, on FL 20-era layouts a stray `0xC9` inside the mixer
-    // section — fired 3000+ events after the last `0x40` and before
-    // the first `0x62` — gets misattributed to the final channel as
-    // a phantom plugin.internalName (e.g. "Fruity Parametric EQ 2"),
-    // blocking the sampler-reclassification rule.
-    if (
-      ev.opcode === OP_INSERT_END ||
-      ev.opcode === OP_INSERT_NAME ||
-      ev.opcode === OP_INSERT_FLAGS
-    ) {
+    // Mixer-section structural opcodes close channel scope. 0x93
+    // (insert close) and 0xEC (insert flags) are reliable exit
+    // markers on both FL 9 and FL 25 layouts. 0xCC (insert name)
+    // is NOT used as an exit marker — on FL 9 it fires for every
+    // insert but the last channel's 0xCB (plugin name) can still
+    // appear INTERLEAVED with mixer events, and the reference
+    // parser's coarser channel-divide includes those 0xCB events
+    // as the channel's name source. Keeping channel scope open
+    // through 0xCC matches that.
+    if (ev.opcode === OP_INSERT_END || ev.opcode === OP_INSERT_FLAGS) {
       scope = "outside";
       continue;
     }
@@ -447,7 +446,12 @@ export function buildChannels(
       if (info.vendor !== undefined) current.plugin.vendor = info.vendor;
       continue;
     }
-    if (ev.opcode === OP_NAME && ev.kind === "blob" && current.name === undefined) {
+    if (ev.opcode === OP_NAME && ev.kind === "blob") {
+      // 0xCB is the preferred source for channel name. The reference
+      // parser walks plugin/channel name ids in declaration order
+      // and picks the first id present — so 0xCB wins over 0xC0
+      // even if 0xC0 fires first in the stream. Overwrite any
+      // earlier 0xC0 name.
       current.name = decodeTextEvent(ev.payload, legacy);
       continue;
     }
@@ -456,9 +460,10 @@ export function buildChannels(
       ev.kind === "blob" &&
       current.name === undefined
     ) {
-      // Fallback channel-name source — matches the reference parser's first-wins
-      // order `the event projection(the plugin-name event, the legacy channel-name event)`. FL 9
-      // emits names here; FL 25 uses 0xCB (OP_NAME) above.
+      // Fallback only — 0xCB takes priority. FL 9 legacy files often
+      // emit 0xC0 for sample-derived channel names; when no 0xCB
+      // fires we use this. When BOTH fire, the 0xCB handler above
+      // clobbers whatever 0xC0 set here first.
       current.name = decodeTextEvent(ev.payload, legacy);
       continue;
     }
