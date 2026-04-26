@@ -218,21 +218,12 @@ bun install
 bun test
 ```
 
-Three parity harnesses live under `tools/parity/`:
-
-```sh
-# TS parser vs reference parser — counts-and-kinds shape
-python3 tools/parity/run_parity.py tests/corpus/local
-
-# TS presentation layer vs `flp-info --format=json`, byte-for-byte
-python3 tools/parity/run_pass2.py tests/corpus/local
-
-# TS `flpdiff` CLI vs reference `flpdiff --format=text`, MD5-compare
-python3 tools/parity/run_diff_parity.py tests/corpus/local
-```
-
-All three expect an installed reference Python `flp-info` on PATH for
-cross-validation during development. End users don't need any of this.
+During development, parity is verified against the reference
+Python implementation via three harnesses (counts-and-kinds shape,
+full `flp-info --format=json` byte-for-byte, and `flpdiff` rendered
+text). They live in the dev-side `python/tools/parity/` of the
+parent project and aren't part of this TS package — end users don't
+need any of it.
 
 ## Contributing
 

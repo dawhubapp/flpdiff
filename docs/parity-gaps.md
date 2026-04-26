@@ -1,8 +1,8 @@
 # Diff-engine parity gaps
 
-Tracks the known deltas between the TS `flpdiff` (Phase 3.4 port) and the
-Python `flpdiff` CLI's text output. Run the harness at
-`ts/tools/parity/run_diff_parity.py <corpus-dir>` to refresh.
+Tracks the known deltas between the TS `flpdiff` (Phase 3.4 port)
+and the Python `flpdiff` CLI's text output. Refresh via the parity
+harness in the dev-side `python/tools/parity/` of the parent project.
 
 ## Summary
 
@@ -70,7 +70,7 @@ extend this harness.
 ## Refreshing the numbers
 
 ```sh
-.venv/bin/python ts/tools/parity/run_diff_parity.py tests/corpus/local/
+.venv/bin/python python/tools/parity/run_diff_parity.py tests/corpus/local/
 ```
 
 Output shape:

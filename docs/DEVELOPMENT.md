@@ -66,10 +66,10 @@ The TS implementation exists to deliver two wins:
   `0xCB`/`0xCF` overload), and `0xEC` (insert flags, was `0xDC`).
   All four fit the same `DATA + 16` offset pattern.
 - **Parity-harness-driven corrections.** Running the Pass 1 parity
-  harness (`tools/parity/run_parity.py`) against the 85-file local
-  corpus caught three opcode mis-readings that the 5 public fixtures
-  never exercised, plus a handful of walker-scope and legacy-layout
-  bugs — see the "Parity harness" section below.
+  harness against the 85-file local corpus caught three opcode
+  mis-readings that the 5 public fixtures never exercised, plus a
+  handful of walker-scope and legacy-layout bugs — see the
+  "Parity harness" section below.
 - **Bun** is the runtime and test runner. **typed-binary** handles TLV
   event parsing via three custom `Schema<T>` subclasses.
 
@@ -112,17 +112,20 @@ This output is **MD5-identical** to Python's `flpdiff --format text
 Exit codes: `0` identical, `1` differences found, `2` parse/I/O error.
 `--verbose` expands clip-collapse groups back to one line per clip.
 
-Parity harnesses (from the repo root):
+Parity harnesses live in `python/tools/parity/` of the parent dev
+repo (Python-side dev tooling — they shell out to Python's
+`flp-info` / `flpdiff` and compare against `bun run`-driven TS
+snapshots). From the repo root:
 
 ```sh
 # Pass 1 — counts-and-kinds shape (85/85 on local corpus)
-.venv/bin/python ts/tools/parity/run_parity.py tests/corpus/local
+.venv/bin/python python/tools/parity/run_parity.py tests/corpus/local
 
 # Pass 2 — full flp-info --format=json byte-for-byte (83/85)
-.venv/bin/python ts/tools/parity/run_pass2.py tests/corpus/local
+.venv/bin/python python/tools/parity/run_pass2.py tests/corpus/local
 
 # Diff parity — rendered text vs Python's flpdiff CLI (5/6 MATCH)
-.venv/bin/python ts/tools/parity/run_diff_parity.py tests/corpus/local
+.venv/bin/python python/tools/parity/run_diff_parity.py tests/corpus/local
 ```
 
 ## What the parser currently decodes
@@ -207,15 +210,6 @@ ts/
 │       ├── mixer-diff.ts        # compareMixerInsert + compareSlots
 │       ├── arrangement-diff.ts  # track diff + 3 clip-collapse group builders
 │       └── summary.ts           # renderSummary (byte-identical text renderer vs Python)
-├── tools/
-│   └── parity/                  # Python ↔ TS parity harnesses (3 passes)
-│       ├── py_snapshot.py       # in-process Python Pass-1 snapshot
-│       ├── ts-snapshot.ts       # bun-executed TS Pass-1 snapshot
-│       ├── run_parity.py        # Pass-1 runner: counts-and-kinds deep-equal
-│       ├── ts-flp-info.ts       # bun-executed TS Pass-2 (toFlpInfoJson) emitter
-│       ├── run_pass2.py         # Pass-2 runner: full flp-info JSON deep-equal
-│       ├── run_diff_parity.py   # Diff parity: renderSummary vs flpdiff CLI (5/6 MATCH)
-│       └── classify_versions.py # FL-major stratification helper
 └── tests/
     ├── smoke.test.ts            # 5-fixture parametric header+tempo+version
     ├── cli.test.ts              # CLI + pure diff logic
@@ -247,8 +241,9 @@ ts/
 | 3.5   | Browser viewer                                      | 🔲 |
 | 3.6   | Go/no-go gate                                       | 🔲 |
 
-## Parity harness (`tools/parity/`)
+## Parity harness
 
+The harness lives in `python/tools/parity/` of the parent dev repo.
 Two complementary cross-parser checks against Python's
 `flp-info --format=json`.
 
@@ -259,7 +254,7 @@ track / clip / marker totals), then deep-compare. Results stratified
 by FL major version. **85/85 on Roman's 85-file local corpus.**
 
 ```sh
-.venv/bin/python ts/tools/parity/run_parity.py tests/corpus/local
+.venv/bin/python python/tools/parity/run_parity.py tests/corpus/local
 ```
 
 **Pass 2** (full JSON byte-for-byte): runs Python's installed
@@ -271,7 +266,7 @@ on the local corpus — all FL 9/11/12/21/24 files pass, 7/8 FL 25
 (1 PY_ERROR), 31/32 FL 20 (1 wrapper-vendor edge case).
 
 ```sh
-.venv/bin/python ts/tools/parity/run_pass2.py tests/corpus/local
+.venv/bin/python python/tools/parity/run_pass2.py tests/corpus/local
 ```
 
 Current sweep: **85 / 85** MATCH — every FL version at 100%. The
@@ -309,7 +304,7 @@ every pair under `tests/corpus/local/diff_pairs/` (auto-discovered
 by longest common stem prefix) and MD5-compares the output.
 
 ```sh
-.venv/bin/python ts/tools/parity/run_diff_parity.py tests/corpus/local
+.venv/bin/python python/tools/parity/run_diff_parity.py tests/corpus/local
 ```
 
 **5 / 6 MATCH** on the full diff_pairs corpus — byte-for-byte
