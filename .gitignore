@@ -36,3 +36,9 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 # Python bytecode (parity harness shells out to Python)
 __pycache__/
 *.pyc
+
+# Personal / non-redistributable FLP corpus — Roman's own projects and
+# ripped commercial mixes kept for reverse-engineering work. Only
+# tests/corpus/re_base/ (synthetic FL25 base fixtures crafted in FL
+# Studio for this repo) is committed.
+tests/corpus/local/
