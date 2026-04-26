@@ -86,17 +86,28 @@ When they differ (e.g. tempo change):
 
 Exit codes: `0` identical, `1` differences found, `2` parse/I/O error.
 
+Parity harnesses (from the repo root):
+
+```sh
+# Pass 1 — counts-and-kinds shape (85/85 on local corpus)
+.venv/bin/python ts/tools/parity/run_parity.py tests/corpus/local
+
+# Pass 2 — full flp-info --format=json byte-for-byte (83/85)
+.venv/bin/python ts/tools/parity/run_pass2.py tests/corpus/local
+```
+
 ## What the parser currently decodes
 
 `parseFLPFile(buffer)` returns an `FLPProject` with:
 
 ```ts
 {
-  header:   { format, n_channels, ppq },
-  events:   FLPEvent[],          // raw TLV events (4 kinds)
-  channels: Channel[],
-  inserts:  MixerInsert[],
-  patterns: Pattern[],
+  header:       { format, n_channels, ppq },
+  events:       FLPEvent[],          // raw TLV events (4 kinds)
+  metadata:     ProjectMetadata,
+  channels:     Channel[],
+  inserts:      MixerInsert[],
+  patterns:     Pattern[],
   arrangements: Arrangement[],
 }
 ```
@@ -104,12 +115,20 @@ Exit codes: `0` identical, `1` differences found, `2` parse/I/O error.
 Per-entity fields (all optional; populated when the corresponding
 opcode is present):
 
-| Entity      | Fields |
-|-------------|--------|
-| Channel     | iid, kind, name, sample_path, plugin (internalName/name/vendor), color (RGBA), levels (pan/volume/pitch_shift/filter_mod_x/y/type), enabled, pingPongLoop, locked |
-| MixerInsert | index, name, color, icon, output, input, flags (11 named booleans), slots (10 per insert, each with index + pluginName + hasPlugin) |
-| Pattern     | id, name, length, color, looped, notes (13-field records), controllers |
-| Arrangement | id, name, trackCount, clips, timemarkers (marker or signature kind) |
+| Entity           | Fields |
+|------------------|--------|
+| ProjectMetadata  | title, artists, genre, comments, url, dataPath, version (major/minor/patch/build), looped, showInfo, mainPitch, createdOn, timeSpent |
+| Channel          | iid, kind, name, sample_path, plugin (internalName/name/vendor), color (RGBA), levels (pan/volume/pitch_shift/filter_mod_x/y/type), enabled, pingPongLoop, locked, targetInsert, automationPoints |
+| MixerInsert      | index, name, color, icon, output, input, pan/volume/stereoSeparation (from MixerParams), flags (11 named booleans), slots |
+| MixerSlot        | index, pluginName, internalName, pluginVstName, pluginVendor, hasPlugin, enabled, mix |
+| Pattern          | id, name, length, color, looped, notes (13-field records), controllers |
+| Arrangement      | id, name, tracks (full Track[] with iid/color/icon/enabled/height/locked/name), clips, timemarkers (marker or signature kind) |
+
+Plus the **presentation layer** at `src/presentation/flp-info.ts` —
+`toFlpInfoJson(project)` projects the raw model into Python's
+`flp-info --format=json` shape (byte-for-byte with 1e-4 float
+tolerance) for cross-parser comparison and for any consumer that
+wants Python-compatible output.
 
 Plus standalone helpers:
 - `buildProjectSummary(project)` — deterministic projection for oracle testing
@@ -125,30 +144,36 @@ ts/
 ├── tsconfig.json
 ├── docs/
 │   ├── parser-architecture.md   # typed-binary + custom-schemas + error infra
-│   └── flp-format-spec.md       # clean-room FLP format spec (living catalog)
+│   ├── flp-format-spec.md       # clean-room FLP format spec (living catalog)
+│   └── flp-info-shape.md        # Pass-2 contract + full closure log
 ├── src/
-│   ├── index.ts                 # public exports
+│   ├── index.ts                 # public exports (parseFLPFile, toFlpInfoJson, etc.)
 │   ├── cli.ts                   # flpdiff-ts CLI
-│   ├── summary.ts               # buildProjectSummary (oracle projection)
+│   ├── summary.ts               # buildProjectSummary (Pass-1 oracle projection)
 │   ├── model/
-│   │   ├── channel.ts           # Channel, Levels, RGBA, FilterType, ChannelPlugin
+│   │   ├── channel.ts           # Channel, Levels, RGBA, ChannelPlugin, AutomationPoint
 │   │   ├── mixer-insert.ts      # MixerInsert, MixerSlot, InsertFlags, MixerParamRecord
 │   │   ├── pattern.ts           # Pattern, Note, Controller
-│   │   └── arrangement.ts       # Arrangement, Clip, TimeMarker
+│   │   ├── arrangement.ts       # Arrangement, Track, Clip, TimeMarker
+│   │   └── metadata.ts          # ProjectMetadata + decodeTimestamp
 │   ├── parser/
 │   │   ├── errors.ts            # FLPParseError + annotateRead
-│   │   ├── primitives.ts        # VarIntSchema, Utf16LeStringSchema, decode helpers
+│   │   ├── primitives.ts        # VarIntSchema, Utf16/Utf8 decoders
 │   │   ├── event.ts             # FLPEventSchema + FL25_OVERRIDES
-│   │   ├── flp-project.ts       # parseFLPFile, headline accessors
+│   │   ├── flp-project.ts       # parseFLPFile + headline accessors
 │   │   ├── vst-wrapper.ts       # decodeVSTWrapper (id-len-val record stream)
-│   │   └── project-builder.ts   # buildChannels/buildMixerInserts/buildPatterns/buildArrangements
+│   │   └── project-builder.ts   # buildMetadata / buildChannels / buildMixerInserts / buildPatterns / buildArrangements
+│   ├── presentation/
+│   │   └── flp-info.ts          # toFlpInfoJson — Pass-2 projection to Python flp-info shape
 │   └── diff/
 │       └── headline.ts          # pure diffHeadlines + renderHeadlineDiff
 ├── tools/
-│   └── parity/                  # Python ↔ TS parser parity harness
-│       ├── py_snapshot.py       # in-process Python snapshot
-│       ├── ts-snapshot.ts       # bun-executed TS snapshot
-│       ├── run_parity.py        # stratified runner + deep-equal
+│   └── parity/                  # Python ↔ TS parser parity harnesses
+│       ├── py_snapshot.py       # in-process Python Pass-1 snapshot
+│       ├── ts-snapshot.ts       # bun-executed TS Pass-1 snapshot
+│       ├── run_parity.py        # Pass-1 runner: counts-and-kinds deep-equal
+│       ├── ts-flp-info.ts       # bun-executed TS Pass-2 (toFlpInfoJson) emitter
+│       ├── run_pass2.py         # Pass-2 runner: full flp-info JSON deep-equal
 │       └── classify_versions.py # FL-major stratification helper
 └── tests/
     ├── smoke.test.ts            # 5-fixture parametric header+tempo+version
