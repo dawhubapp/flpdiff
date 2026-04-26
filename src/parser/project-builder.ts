@@ -491,6 +491,35 @@ export function buildChannels(
     }
   }
 
+  // Channel-name post-walk override. The reference parser walks
+  // name ids in declaration order and returns `first(id)` from the
+  // channel's FULL event subtree (from its `0x40` to the next `0x40`
+  // or end-of-events) — id priority trumps event order. On FL 9 the
+  // mixer section's `0xCB` events can fire AFTER `0x93` / `0xEC`
+  // within the last channel's subtree, and the reference picks them
+  // as the channel name. Our main-walker scope closes before those
+  // events reach it, so we need a second pass: for each channel,
+  // find the first `0xCB` between its `0x40` and the next `0x40`
+  // — if found, override whatever `0xC0` set.
+  const channelBoundaries: number[] = [];
+  for (let i = 0; i < events.length; i++) {
+    if (events[i]!.opcode === OP_NEW_CHANNEL && events[i]!.kind === "u16") {
+      channelBoundaries.push(i);
+    }
+  }
+  for (let c = 0; c < channels.length; c++) {
+    const ch = channels[c]!;
+    const start = channelBoundaries[c]! + 1;
+    const end = c + 1 < channelBoundaries.length ? channelBoundaries[c + 1]! : events.length;
+    for (let i = start; i < end; i++) {
+      const ev = events[i]!;
+      if (ev.opcode === OP_NAME && ev.kind === "blob") {
+        ch.name = decodeTextEvent(ev.payload, legacy);
+        break;
+      }
+    }
+  }
+
   return channels;
 }
 
