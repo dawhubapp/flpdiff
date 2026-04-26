@@ -133,3 +133,5 @@ export {
 } from "./diff/mixer-diff.ts";
 export { fmtBeats, compareTrack, compareArrangement } from "./diff/arrangement-diff.ts";
 export { comparePattern } from "./diff/comparator.ts";
+export type { RenderSummaryOptions } from "./diff/summary.ts";
+export { renderSummary } from "./diff/summary.ts";
