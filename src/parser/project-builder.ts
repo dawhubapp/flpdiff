@@ -29,6 +29,12 @@ const OP_CHANNEL_PING_PONG = 0x14;
 /** Channel "is locked" flag (u8 bool, FL 12.3+). */
 const OP_CHANNEL_LOCKED = 0x20;
 /**
+ * Channel "zipped" flag (u8 bool). FL only writes this when the
+ * channel is collapsed/minimized in the rack; absence ≡
+ * `zipped: false`.
+ */
+const OP_CHANNEL_ZIPPED = 0x0f;
+/**
  * Channel "routed to" — int8 (signed). Mixer insert index this
  * channel feeds into; `-1` means unrouted / default.
  */
@@ -402,6 +408,10 @@ export function buildChannels(
     }
     if (ev.opcode === OP_CHANNEL_LOCKED && ev.kind === "u8" && current.locked === undefined) {
       current.locked = ev.value !== 0;
+      continue;
+    }
+    if (ev.opcode === OP_CHANNEL_ZIPPED && ev.kind === "u8" && current.zipped === undefined) {
+      current.zipped = ev.value !== 0;
       continue;
     }
     if (ev.opcode === OP_CHANNEL_ROUTED_TO && ev.kind === "u8" && current.targetInsert === undefined) {

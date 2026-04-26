@@ -200,6 +200,16 @@ export type Channel = {
    */
   locked?: boolean;
   /**
+   * Whether the channel is zipped / minimized in the channel rack
+   * (collapsed button strip). Opcode `0x0F` (u8 bool). FL only
+   * emits this when the channel is zipped — if the event is absent
+   * the channel is not zipped. We preserve the same semantics:
+   * field is `undefined` (≡ `false`) when FL didn't emit the opcode.
+   * Not surfaced in the Python `flp-info` JSON output, so this is a
+   * TS-internal enrichment for future diff-engine use.
+   */
+  zipped?: boolean;
+  /**
    * Mixer insert this channel routes its audio into. Opcode `0x16`
    * (int8). `flp-info` emits this as `target_insert`. Value `-1`
    * means "unrouted / default to master"; we preserve the raw int

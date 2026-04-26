@@ -144,6 +144,7 @@ const ORACLE: Record<string, ProjectSummary> = {
           {
             position: 0,
             flags: 0x4000,
+            slide: false,
             channel_iid: 1,
             length: 48,
             key: 63,

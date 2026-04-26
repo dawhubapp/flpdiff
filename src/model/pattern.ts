@@ -5,8 +5,20 @@
 export type Note = {
   /** Tick position within the pattern (PPQ ticks — divide by `project.header.ppq` for beats). */
   position: number;
-  /** Raw flags bitmask (stemma / slide / etc. — not interpreted here). */
+  /**
+   * Raw flags bitmask. Kept faithful to FL's on-disk byte so we can
+   * round-trip and detect future flag introductions. Known bits:
+   *   - bit 3 (`1 << 3 = 0x08`) → slide note. See `slide` field.
+   * Other bits are unassigned.
+   */
   flags: number;
+  /**
+   * Whether this note is a "sliding" note — pitch-glides into the
+   * next note instead of re-triggering. Derived from `flags & 0x08`.
+   * Always populated (derived at decode time); the raw `flags`
+   * bit is the authoritative source if other bits matter later.
+   */
+  slide: boolean;
   /** Channel iid this note triggers. Cross-referenced with `Channel.iid`. */
   channel_iid: number;
   /** Length in PPQ ticks. */
@@ -110,14 +122,19 @@ export type Pattern = {
  * Parse the payload of opcode `0xE0` (FL 25's pattern notes; pre-FL-25
  * saves emit notes at `0xD0`). Payload is a dense array of 24-byte records.
  */
+/** `flags` bit (1 << 3) → sliding note. Sole catalogued flag bit. */
+export const NOTE_FLAG_SLIDE = 0x08;
+
 export function decodeNotes(payload: Uint8Array): Note[] {
   const out: Note[] = [];
   if (payload.byteLength % 24 !== 0) return out;
   const view = new DataView(payload.buffer, payload.byteOffset, payload.byteLength);
   for (let p = 0; p + 24 <= payload.byteLength; p += 24) {
+    const flags = view.getUint16(p + 4, true);
     out.push({
       position: view.getUint32(p, true),
-      flags: view.getUint16(p + 4, true),
+      flags,
+      slide: (flags & NOTE_FLAG_SLIDE) !== 0,
       channel_iid: view.getUint16(p + 6, true),
       length: view.getUint32(p + 8, true),
       key: view.getUint16(p + 12, true),

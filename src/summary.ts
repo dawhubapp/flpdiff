@@ -36,6 +36,7 @@ export type ChannelSummary = {
   enabled?: boolean;
   pingPongLoop?: boolean;
   locked?: boolean;
+  zipped?: boolean;
 };
 
 export type SlotSummary = {
@@ -102,6 +103,7 @@ function pickChannel(ch: FLPProject["channels"][number]): ChannelSummary {
   if (ch.enabled !== undefined) out.enabled = ch.enabled;
   if (ch.pingPongLoop !== undefined) out.pingPongLoop = ch.pingPongLoop;
   if (ch.locked !== undefined) out.locked = ch.locked;
+  if (ch.zipped !== undefined) out.zipped = ch.zipped;
   return out;
 }
 

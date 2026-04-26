@@ -33,6 +33,7 @@ describe("Pattern notes (opcode 0xE0) — oracle parity", () => {
     expect(note).toEqual({
       position: 0,
       flags: 0x4000,
+      slide: false, // bit 3 (0x08) is clear
       channel_iid: 1,
       length: 48,
       key: 63,
@@ -45,6 +46,35 @@ describe("Pattern notes (opcode 0xE0) — oracle parity", () => {
       mod_x: 128,
       mod_y: 128,
     });
+  });
+});
+
+describe("Note flag decoding (bit 3 → slide)", () => {
+  function craftOne(flags: number): Note {
+    const buf = new Uint8Array(24);
+    const view = new DataView(buf.buffer);
+    view.setUint16(4, flags, true);
+    return decodeNotes(buf)[0]!;
+  }
+
+  test("flags = 0 → slide false", () => {
+    expect(craftOne(0).slide).toBe(false);
+  });
+
+  test("flags = 0x08 → slide true (only the slide bit set)", () => {
+    expect(craftOne(0x08).slide).toBe(true);
+  });
+
+  test("flags = 0x4008 → slide true (slide bit set among others)", () => {
+    const n = craftOne(0x4008);
+    expect(n.flags).toBe(0x4008);
+    expect(n.slide).toBe(true);
+  });
+
+  test("flags = 0x4000 → slide false (slide bit clear among others)", () => {
+    const n = craftOne(0x4000);
+    expect(n.flags).toBe(0x4000);
+    expect(n.slide).toBe(false);
   });
 });
 

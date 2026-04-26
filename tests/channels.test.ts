@@ -272,19 +272,23 @@ describe("Channel Levels (opcode 0xDB, 24-byte struct)", () => {
   });
 });
 
-describe("Channel BYTE flags — enabled / pingPongLoop / locked", () => {
+describe("Channel BYTE flags — enabled / pingPongLoop / locked / zipped", () => {
   test.each([
     "base_empty.flp",
     "base_one_channel.flp",
     "base_one_insert.flp",
     "base_one_pattern.flp",
     "base_one_serum.flp",
-  ])("%s: every channel enabled, not ping-pong, not locked", async (name) => {
+  ])("%s: every channel enabled, not ping-pong, not locked, not zipped", async (name) => {
     const channels = await channelsOf(name);
     for (const ch of channels) {
       expect(ch.enabled).toBe(true);
       expect(ch.pingPongLoop).toBe(false);
       expect(ch.locked).toBe(false);
+      // `zipped` is only emitted by FL when a channel is collapsed;
+      // none of the 5 public fixtures has a zipped channel, so the
+      // field is `undefined` (≡ false).
+      expect(ch.zipped ?? false).toBe(false);
     }
   });
 });
