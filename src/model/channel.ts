@@ -206,7 +206,68 @@ export type Channel = {
    * (Python does too).
    */
   targetInsert?: number;
+  /**
+   * Automation keyframes for automation-kind channels. Sourced from
+   * opcode `0xEA`. Each point has `{position, value, tension}`.
+   * Empty on non-automation channels (and on fresh automation
+   * channels with no points written).
+   */
+  automationPoints?: AutomationPoint[];
 };
+
+/**
+ * One keyframe on an automation channel's curve. Matches Python
+ * `flp-info`'s `AutomationPoint` shape — `position` in PPQ ticks
+ * (rounded to an int), `value` in 0..1, `tension` in -1..1.
+ */
+export type AutomationPoint = {
+  position: number;
+  value: number;
+  tension: number;
+};
+
+/**
+ * Decode a `0xEA` channel-automation payload into keyframes.
+ * Payload layout:
+ *
+ *   offset 0  : 4 bytes reserved (always 1)
+ *   offset 4  : int32 lfo.amount
+ *   offset 8  : 1 byte reserved
+ *   offset 9  : 2 bytes reserved
+ *   offset 11 : 2 bytes reserved
+ *   offset 13 : 4 bytes reserved
+ *   offset 17 : uint32 point_count
+ *   offset 21 : point_count × 24-byte records
+ *
+ * Each 24-byte record:
+ *   offset 0  : float64 _offset (change in X since previous point)
+ *   offset 8  : float64 value (0..1)
+ *   offset 16 : float32 tension (-1..1)
+ *   offset 20 : 4 bytes reserved (linked to tension)
+ *
+ * Point 0's position = its _offset. Point N's position = sum of
+ * _offsets up to and including N. Python rounds to int to kill
+ * IEEE noise from consecutive float64 additions (`128.000000381...`).
+ */
+export function decodeAutomationPoints(payload: Uint8Array): AutomationPoint[] {
+  if (payload.byteLength < 21) return [];
+  const view = new DataView(payload.buffer, payload.byteOffset, payload.byteLength);
+  const count = view.getUint32(17, true);
+  const recStart = 21;
+  const recSize = 24;
+  if (payload.byteLength < recStart + count * recSize) return [];
+  const out: AutomationPoint[] = new Array(count);
+  let position = 0;
+  for (let i = 0; i < count; i++) {
+    const p = recStart + i * recSize;
+    const offset = view.getFloat64(p, true);
+    position += offset;
+    const value = view.getFloat64(p + 8, true);
+    const tension = view.getFloat32(p + 16, true);
+    out[i] = { position: Math.round(position), value, tension };
+  }
+  return out;
+}
 
 /**
  * Extract the filename component of a sample_path — the last

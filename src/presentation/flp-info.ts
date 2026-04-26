@@ -40,6 +40,13 @@ type PluginJson = {
   state: null;
 };
 
+type AutomationPointJson = {
+  _type: "AutomationPoint";
+  position: number;
+  value: number;
+  tension: number;
+};
+
 type ChannelJson = {
   _type: "Channel";
   iid: number;
@@ -53,7 +60,7 @@ type ChannelJson = {
   enabled: boolean;
   muted: boolean;
   target_insert: number | null;
-  automation_points: unknown[];
+  automation_points: AutomationPointJson[];
 };
 
 type NoteJson = {
@@ -302,7 +309,12 @@ function toChannel(ch: Channel): ChannelJson {
     // in Python's output. FL still emits a 0x16 event on automation
     // channels with value 0, but Python ignores it. Mirror that.
     target_insert: ch.kind === "automation" ? null : (ch.targetInsert ?? null),
-    automation_points: [],
+    automation_points: (ch.automationPoints ?? []).map((p) => ({
+      _type: "AutomationPoint" as const,
+      position: p.position,
+      value: p.value,
+      tension: p.tension,
+    })),
   };
 }
 

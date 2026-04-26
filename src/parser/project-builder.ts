@@ -1,7 +1,7 @@
 import type { FLPEvent } from "./event.ts";
 import { decodeUtf16LeBytes, decodeUtf8Bytes } from "./primitives.ts";
 import { decodeVSTWrapper } from "./vst-wrapper.ts";
-import { type Channel, classifyChannelKind, unpackRGBA, decodeLevels } from "../model/channel.ts";
+import { type Channel, classifyChannelKind, unpackRGBA, decodeLevels, decodeAutomationPoints } from "../model/channel.ts";
 // unpackRGBA is re-used for pattern color (0x96) — same byte packing as 0x80.
 import {
   type MixerInsert,
@@ -33,6 +33,11 @@ const OP_CHANNEL_LOCKED = 0x20;
  * channel feeds into; `-1` means unrouted / default.
  */
 const OP_CHANNEL_ROUTED_TO = 0x16;
+/**
+ * Channel automation keyframe stream. Decoded by
+ * `decodeAutomationPoints` for automation-kind channels.
+ */
+const OP_CHANNEL_AUTOMATION = 0xea;
 const OP_CHANNEL_SAMPLE_PATH = 0xc4;
 /** Plugin internal-class name (UTF-16LE). On a bare sampler channel
  *  FL emits this as an empty string. */
@@ -205,55 +210,68 @@ function parseFlVersionAscii(value: string): ProjectMetadata["version"] | undefi
 }
 
 /**
- * Single pass over the event stream to pull out project metadata.
- * Doesn't need scope tracking — these opcodes are unique at the
- * project level and don't overlap channel/mixer scopes.
+ * Two-pass scan over the event stream to pull out project metadata.
+ * First pass determines the FL version from `0xC7` (ASCII) so we know
+ * which encoding to apply to the other text events — pre-FL-11.5
+ * files use ASCII, later files use UTF-16LE (matches the reference parser's
+ * `str_type = UnicodeEvent if [major,minor] >= [11,5] else AsciiEvent`).
+ * Second pass reads every other project events event with the right codec.
  */
 export function buildMetadata(events: readonly FLPEvent[]): ProjectMetadata {
   const out: ProjectMetadata = {};
   let flBuild: number | undefined;
+
+  // Pass 1: FL version (always ASCII at 0xC7 regardless of era).
+  for (const ev of events) {
+    if (ev.opcode === OP_PROJECT_FL_VERSION && ev.kind === "blob") {
+      const s = decodeUtf8Bytes(ev.payload);
+      const v = parseFlVersionAscii(s);
+      if (v !== undefined) {
+        out.version = v;
+        break;
+      }
+    }
+  }
+
+  const legacy = isLegacyText(out);
+  const decodeText = (payload: Uint8Array): string => decodeTextEvent(payload, legacy);
+
+  // Pass 2: everything else.
   for (const ev of events) {
     if (ev.opcode === OP_PROJECT_TITLE && ev.kind === "blob" && out.title === undefined) {
-      const s = decodeUtf16LeBytes(ev.payload);
+      const s = decodeText(ev.payload);
       if (s.length > 0) out.title = s;
       continue;
     }
     if (ev.opcode === OP_PROJECT_ARTISTS && ev.kind === "blob" && out.artists === undefined) {
-      const s = decodeUtf16LeBytes(ev.payload);
+      const s = decodeText(ev.payload);
       if (s.length > 0) out.artists = s;
       continue;
     }
     if (ev.opcode === OP_PROJECT_GENRE && ev.kind === "blob" && out.genre === undefined) {
-      const s = decodeUtf16LeBytes(ev.payload);
+      const s = decodeText(ev.payload);
       if (s.length > 0) out.genre = s;
       continue;
     }
     if (ev.opcode === OP_PROJECT_URL && ev.kind === "blob" && out.url === undefined) {
-      const s = decodeUtf16LeBytes(ev.payload);
+      const s = decodeText(ev.payload);
       if (s.length > 0) out.url = s;
       continue;
     }
     if (ev.opcode === OP_PROJECT_DATA_PATH && ev.kind === "blob" && out.dataPath === undefined) {
-      const s = decodeUtf16LeBytes(ev.payload);
+      const s = decodeText(ev.payload);
       if (s.length > 0) out.dataPath = s;
       continue;
     }
     if (ev.opcode === OP_PROJECT_COMMENTS && ev.kind === "blob" && out.comments === undefined) {
-      const s = decodeUtf16LeBytes(ev.payload);
+      const s = decodeText(ev.payload);
       if (s.length > 0) out.comments = s;
       continue;
     }
     if (ev.opcode === OP_PROJECT_RTF_COMMENTS && ev.kind === "blob" && out.comments === undefined) {
       // Prefer plaintext `0xC3` if both are present (first-wins order).
-      const s = decodeUtf16LeBytes(ev.payload);
+      const s = decodeText(ev.payload);
       if (s.length > 0) out.comments = s;
-      continue;
-    }
-    if (ev.opcode === OP_PROJECT_FL_VERSION && ev.kind === "blob" && out.version === undefined) {
-      // ASCII (subset of UTF-8), e.g. "25.2.4" or "25.2.4.4960".
-      const s = decodeUtf8Bytes(ev.payload);
-      const v = parseFlVersionAscii(s);
-      if (v !== undefined) out.version = v;
       continue;
     }
     if (ev.opcode === OP_PROJECT_FL_BUILD && ev.kind === "u32") {
@@ -384,6 +402,10 @@ export function buildChannels(
     if (ev.opcode === OP_CHANNEL_ROUTED_TO && ev.kind === "u8" && current.targetInsert === undefined) {
       // The event is BYTE-range u8; treat as signed int8. 0xFF → -1 (unrouted).
       current.targetInsert = ev.value > 127 ? ev.value - 256 : ev.value;
+      continue;
+    }
+    if (ev.opcode === OP_CHANNEL_AUTOMATION && ev.kind === "blob" && current.automationPoints === undefined) {
+      current.automationPoints = decodeAutomationPoints(ev.payload);
       continue;
     }
     if (ev.opcode === OP_PLUGIN_COLOR && ev.kind === "u32" && current.color === undefined) {
@@ -696,7 +718,11 @@ export function buildMixerInserts(
  * Preserves raw pattern ids (may be sparse — users can delete middle
  * patterns leaving gaps) and iteration order (first-seen).
  */
-export function buildPatterns(events: readonly FLPEvent[]): Pattern[] {
+export function buildPatterns(
+  events: readonly FLPEvent[],
+  metadata?: ProjectMetadata,
+): Pattern[] {
+  const legacy = isLegacyText(metadata);
   const byId = new Map<number, Pattern>();
   let currentId: number | undefined;
 
@@ -708,7 +734,7 @@ export function buildPatterns(events: readonly FLPEvent[]): Pattern[] {
     }
     if (ev.opcode === OP_PATTERN_NAME && ev.kind === "blob" && currentId !== undefined) {
       const p = byId.get(currentId);
-      if (p && p.name === undefined) p.name = decodeUtf16LeBytes(ev.payload);
+      if (p && p.name === undefined) p.name = decodeTextEvent(ev.payload, legacy);
       continue;
     }
     if (ev.opcode === OP_PATTERN_NOTES && ev.kind === "blob" && currentId !== undefined) {
