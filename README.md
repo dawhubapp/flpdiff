@@ -3,12 +3,13 @@
 TypeScript port of [flpdiff](https://github.com/pronskiy/flpdiff).
 
 **Status:** Phase 3.1 (scaffold) ✅, Phase 3.2 (headline MVP) ✅, Phase 3.3
-(entities) 🔄 at comprehensive coverage across all six sub-phases, with
-3.3.6 (oracle harness) ✅. Phase 3.4 (diff engine port) **deferred pending
-confirmation** — the parser now covers enough entity metadata for
-meaningful diffs but no matching/comparator code has been written yet.
+(entities) 🔄 at comprehensive coverage, 3.3.6 (oracle) ✅, 3.3.7 (Pass 1
+parity) ✅, 3.3.8 (Pass 2 parity) ✅. **Phase 3.4 (diff engine port) ✅**
+— 10 commits across matcher, diff model, comparator (metadata /
+channels / patterns / mixer / arrangement / clip-collapse groups),
+note diff, automation diff, summary formatter, parity harness.
 
-**Current state:** 155 tests green, 3934 assertions, tsc clean, on
+**Current state:** 308 tests green, 4266 assertions, tsc clean, on
 TypeScript 6 + Bun 1.3.9 + typed-binary 4.3.3.
 
 - **5/5 public FL 25 fixtures** — hand-crafted oracle via
@@ -16,12 +17,17 @@ TypeScript 6 + Bun 1.3.9 + typed-binary 4.3.3.
 - **85/85 local corpus — Pass 1** (counts-and-kinds shape), every FL
   version 9 through 25 at 100%.
 - **83/85 local corpus — Pass 2** (full `flp-info --format=json`
-  byte-for-byte with 1e-4 float tolerance) via the new TS
-  presentation layer at `src/presentation/flp-info.ts`. FL 9-12 at
-  100%, FL 21-24 at 100%, 1 FL 20 single-file edge case (Kickstart
-  VST wrapper with a FabFilter vendor string we extract but Python
-  misses — arguably our output is more faithful), 1 FL 25 file
-  that crashes Python's `flp-info` (not a TS issue).
+  byte-for-byte with 1e-4 float tolerance) via the TS presentation
+  layer at `src/presentation/flp-info.ts`. FL 9-12 at 100%, FL 21-24
+  at 100%, 1 FL 20 Kickstart VST wrapper edge case (TS extracts
+  FabFilter vendor Python misses — arguably our output is more
+  faithful), 1 FL 25 file that crashes Python's `flp-info` (not a
+  TS issue).
+- **5/6 diff-pairs — Diff parity**: MD5-identical rendered text
+  output vs Python's `flpdiff --format text --no-color` on 5 of 6
+  real-world diff pairs (dorn-girls / edz_chords / italo_bass_pop /
+  j1 / phlegma_dogs). The 6th is the same Kickstart VST vendor
+  edge case as above. See `docs/parity-gaps.md`.
 
 This repo is a nested git repo alongside the main Python `flpdiff`
 codebase. It exists to explore two asymmetric wins that Python cannot
@@ -72,19 +78,39 @@ any production commitment is made. See the spec
 ```sh
 bun install
 bun test
-bun run cli path/to/A.flp path/to/B.flp
+bun run src/cli.ts path/to/A.flp path/to/B.flp [--verbose]
 ```
 
-Expected `cli` output when headlines match:
+Expected output on a real diff:
+
 ```
-No headline changes.
+FLP Diff: v1.flp vs v2.flp
+───────────────────────────
+Summary: 4 changes (2 channels, 1 mixer, 1 arrangements, 3 tracks)
+
+Channels:
+  ~ Channel sampler 'Kick' modified (1 changes)
+      ~ Channel volume 78% → 100%
+  + Added channel sampler 'New Bass' (sample: ...)
+
+Mixer:
+  ~ Insert 8 (unnamed) modified (3 changes)
+      + Insert renamed from unset to 'Vocals'
+      + Insert color: unset → #5f7581
+      ~ Insert volume 100% → 71%
+
+Arrangements:
+  ~ Arrangement 'arrangement' modified (0 arrangement changes, 3 track changes)
+      ~ Track 'drums' modified (10 changes)
+          + 9 clips of 'kick.wav' added (length 4 beats, beats 0 … 32)
 ```
-When they differ (e.g. tempo change):
-```
-~ Tempo: 120.0 BPM → 145.0 BPM
-```
+
+This output is **MD5-identical** to Python's `flpdiff --format text
+--no-color` on real corpus pairs (see `docs/parity-gaps.md` for the
+5/6 pass rate and the one documented edge case).
 
 Exit codes: `0` identical, `1` differences found, `2` parse/I/O error.
+`--verbose` expands clip-collapse groups back to one line per clip.
 
 Parity harnesses (from the repo root):
 
@@ -94,6 +120,9 @@ Parity harnesses (from the repo root):
 
 # Pass 2 — full flp-info --format=json byte-for-byte (83/85)
 .venv/bin/python ts/tools/parity/run_pass2.py tests/corpus/local
+
+# Diff parity — rendered text vs Python's flpdiff CLI (5/6 MATCH)
+.venv/bin/python ts/tools/parity/run_diff_parity.py tests/corpus/local
 ```
 
 ## What the parser currently decodes
@@ -167,14 +196,23 @@ ts/
 │   ├── presentation/
 │   │   └── flp-info.ts          # toFlpInfoJson — Pass-2 projection to Python flp-info shape
 │   └── diff/
-│       └── headline.ts          # pure diffHeadlines + renderHeadlineDiff
+│       ├── headline.ts          # pure diffHeadlines + renderHeadlineDiff (Phase 3.2.4 MVP)
+│       ├── matcher.ts           # two-pass entity matching (Phase 3.4.1)
+│       ├── diff-model.ts        # Change/ChannelDiff/ClipMoveGroup/DiffResult types + factories
+│       ├── comparator.ts        # scalar + channel + plugin + pattern diff + orchestrator
+│       ├── note-diff.ts         # per-note 3-pass matcher + musical-unit shift renderer
+│       ├── automation-diff.ts   # keyframe diff (position-anchored, timeline-ordered)
+│       ├── mixer-diff.ts        # compareMixerInsert + compareSlots
+│       ├── arrangement-diff.ts  # track diff + 3 clip-collapse group builders
+│       └── summary.ts           # renderSummary (byte-identical text renderer vs Python)
 ├── tools/
-│   └── parity/                  # Python ↔ TS parser parity harnesses
+│   └── parity/                  # Python ↔ TS parity harnesses (3 passes)
 │       ├── py_snapshot.py       # in-process Python Pass-1 snapshot
 │       ├── ts-snapshot.ts       # bun-executed TS Pass-1 snapshot
 │       ├── run_parity.py        # Pass-1 runner: counts-and-kinds deep-equal
 │       ├── ts-flp-info.ts       # bun-executed TS Pass-2 (toFlpInfoJson) emitter
 │       ├── run_pass2.py         # Pass-2 runner: full flp-info JSON deep-equal
+│       ├── run_diff_parity.py   # Diff parity: renderSummary vs flpdiff CLI (5/6 MATCH)
 │       └── classify_versions.py # FL-major stratification helper
 └── tests/
     ├── smoke.test.ts            # 5-fixture parametric header+tempo+version
@@ -184,7 +222,16 @@ ts/
     ├── patterns.test.ts         # pattern name/length/color dedup
     ├── notes.test.ts            # pattern notes + controllers decoders
     ├── arrangements.test.ts     # arrangement count + clips + timemarkers
-    └── project-summary.test.ts  # full-structure oracle across all 5 fixtures
+    ├── metadata.test.ts         # ProjectMetadata u8 fields (time-sig, pan_law, etc.)
+    ├── project-summary.test.ts  # full-structure oracle across all 5 fixtures
+    ├── matcher.test.ts          # two-pass matching (13 cases vs Python)
+    ├── diff-model.test.ts       # validator + default-field coverage (16 cases)
+    ├── comparator.test.ts       # scalar comparator + channel/plugin labels
+    ├── note-diff.test.ts        # 3-pass note matcher + musical-unit shifts
+    ├── automation-diff.test.ts  # keyframe diff + timeline ordering
+    ├── mixer-diff.test.ts       # insert + slot + plugin-swap labels
+    ├── arrangement-diff.test.ts # track + clip-collapse groups (min-3 threshold)
+    └── summary.test.ts          # renderSummary markers + indentation + bucket rules
 ```
 
 ## Scope by phase
@@ -193,8 +240,8 @@ ts/
 |-------|-----------------------------------------------------|--------|
 | 3.1   | Scaffold + error infra + format spec                | 4/5 (3.1.4 formal oracle harness remains 🔲 — done informally via test.each) |
 | 3.2   | Headline MVP (envelope + version + tempo + PPQ)     | 3/4 ✅ (3.2.2 time signature 🔄 — requires 0xC0 compound-blob decoding) |
-| 3.3   | Entity coverage                                     | **6/6 all 🔄 with deep property coverage + 3.3.6 ✅** |
-| 3.4   | Port the diff engine from Python                    | 🔲 **deferred pending Roman's confirmation** |
+| 3.3   | Entity coverage                                     | 6/6 🔄 + 3.3.6/3.3.7/3.3.8 ✅ (Pass 1 85/85, Pass 2 83/85) |
+| 3.4   | Port the diff engine from Python                    | **✅ 4/4** (matcher, comparator+diff-model, summary formatter, parity harness; 5/6 MATCH on diff_pairs corpus) |
 | 3.5   | Browser viewer                                      | 🔲 |
 | 3.6   | Go/no-go gate                                       | 🔲 |
 
@@ -254,6 +301,34 @@ FL 24  12/12  ✅
 FL 25   8/8   ✅
 ```
 
+**Diff parity** (rendered text, Phase 3.4.4): runs Python's installed
+`flpdiff --format text --no-color` and the TS `flpdiff-ts` CLI on
+every pair under `tests/corpus/local/diff_pairs/` (auto-discovered
+by longest common stem prefix) and MD5-compares the output.
+
+```sh
+.venv/bin/python ts/tools/parity/run_diff_parity.py tests/corpus/local
+```
+
+**5 / 6 MATCH** on the full diff_pairs corpus — byte-for-byte
+identical Python↔TS rendered text:
+
+```
+[MATCH] dorn-girls.flp vs dorn-girls_2.flp              md5 f1254ddc
+[MATCH] edz_chords_10.flp vs edz_chords_28.flp          md5 36612c73
+[DIFF ] h1_86.flp vs h1_86_98.flp                       (Kickstart vendor — known)
+[MATCH] italo_bass_pop_15.flp vs italo_bass_pop_18.flp  md5 4517ad63
+[MATCH] j1_6.flp vs j1_7.flp                            md5 03d5444a
+[MATCH] phlegma_dogs_10.flp vs phlegma_dogs_9.flp       md5 c541fda5
+```
+
+Coverage spans FL 20/24/25 projects with real-world content —
+vocals, chord progressions, drum chops, multi-bar arrangements —
+exercising metadata, channels, patterns, mixer inserts, arrangement
+tracks with clip-collapse groups, automation keyframes, and per-note
+diff with bucket summarisation. See `docs/parity-gaps.md` for the
+single documented DIFF and the stubbed opaque-plugin-state branch.
+
 ## Known open format work
 
 1. **Clip-bearing fixtures** — no committed fixture emits `0xE9`
@@ -299,20 +374,34 @@ FL 25   8/8   ✅
 - Channel zipped: `Channel.zipped` decoded from `0x0F`. Absence ≡ false
   per the reference parser's FL-write-only semantics.
 
+**Closed in Phase 3.4:**
+- Diff engine port complete — matcher, diff-model types, scalar
+  comparator (metadata/channels/plugin), note diff, automation diff,
+  mixer insert diff, arrangement/track/clip-collapse diff, pattern
+  diff, DiffResult orchestrator, summary formatter.
+- `renderSummary` output **MD5-identical** to Python's `flpdiff
+  --format text --no-color` on 5 of 6 real-world corpus diff pairs.
+- `flpdiff-ts A.flp B.flp [--verbose]` CLI runs the full semantic
+  diff with clip-collapse grouping.
+
 ## For the next session
 
-Parity essentially done — Pass 1 85/85, Pass 2 83/85 (both
-remaining are arguably-correct edge cases). Two natural paths:
+Phase 3.4 is complete. Two realistic paths:
 
-1. **Start Phase 3.4** (diff engine port). Parser coverage is
-   extremely solid — Pass 1 85/85, Pass 2 83/85, public oracle
-   5/5. Port Python's matcher + comparator + summary formatter
-   from `src/flp_diff/{matcher,comparator,summary}.py`. Four
-   sub-phases per parent SPEC.
+1. **Phase 3.5 (browser viewer)** — bundle the parser + diff engine
+   as a static web page. Two file-drop zones + a "Diff" button +
+   rendered summary pane. Target <2 MB gzipped. Deployment via
+   GitHub Pages / Cloudflare Pages. Sub-phases per parent SPEC:
+   3.5.1 minimal UI, 3.5.2 static bundling, 3.5.3 deployment,
+   3.5.4 shareable-URL mode (optional).
 2. **Keep deepening Phase 3.3** — remaining items in the "Known
-   open format work" list above: MixerParams sparse-index mapping
-   (attribution to visible slots), routing matrix, clip-bearing
-   fixtures to activate end-to-end playlist decoders, and any
-   further reference-parser-side features not yet mirrored.
+   open format work" list above: per-insert routing projection,
+   clip-bearing fixtures, zipped-channel fixture. All cosmetic on
+   top of the already-solid parity numbers.
+3. **Plugin-state registry (Phase 2.1 parallel)** — wire up a TS
+   plugin-state decoder registry analogous to Python's
+   `flp_diff.plugins`, then route opaque-blob diffs through it so
+   `DiffResult.opaqueChanges` starts producing SHA-256 + typed
+   per-parameter diffs for known plugins (Fruity EQ 2 first).
 
-Roman's been explicit that Phase 3.4 waits for confirmation.
+Phase 3.6 go/no-go gate follows whichever of these you pick.
