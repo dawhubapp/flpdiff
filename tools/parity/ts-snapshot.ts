@@ -35,7 +35,9 @@ function snapshot(path: string): Snapshot {
     (a, p) => a + p.controllers.length,
     0,
   );
-  const named_inserts = project.inserts.filter((i) => i.name !== undefined).length;
+  const named_inserts = project.inserts.filter(
+    (i) => i.name !== undefined && i.name.length > 0,
+  ).length;
   const filled_slots = project.inserts.reduce(
     (a, ins) => a + ins.slots.filter((s) => s.hasPlugin === true).length,
     0,

@@ -199,6 +199,13 @@ export type Channel = {
    * opcode emitted on every channel on FL 25.
    */
   locked?: boolean;
+  /**
+   * Mixer insert this channel routes its audio into. Opcode `0x16`
+   * (int8). `flp-info` emits this as `target_insert`. Value `-1`
+   * means "unrouted / default to master"; we preserve the raw int
+   * (Python does too).
+   */
+  targetInsert?: number;
 };
 
 /**

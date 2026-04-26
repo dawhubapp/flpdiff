@@ -75,7 +75,7 @@ type PatternJson = {
   iid: number;
   name: string | null;
   color: RgbaJson | null;
-  length: number;
+  length: number | null;
   looped: boolean;
   notes: NoteJson[];
   controllers: ControllerJson[];
@@ -272,7 +272,11 @@ function toChannel(ch: Channel): ChannelJson {
     volume,
     enabled: ch.enabled ?? true,
     muted: false, // TS doesn't decode muted yet — Python default
-    target_insert: null, // TS doesn't decode yet — Python default
+    // the reference parser's `Automation` subclass doesn't expose `.insert`, so
+    // `the safe-attr fallback(ch, "insert")` returns None → `target_insert: null`
+    // in Python's output. FL still emits a 0x16 event on automation
+    // channels with value 0, but Python ignores it. Mirror that.
+    target_insert: ch.kind === "automation" ? null : (ch.targetInsert ?? null),
     automation_points: [],
   };
 }
@@ -297,7 +301,10 @@ function toPattern(p: Pattern): PatternJson {
     iid: p.id,
     name: p.name ?? null,
     color: rgbaToJson(p.color),
-    length: p.length ?? 0,
+    // Python emits null when the pattern-length event isn't present
+    // (FL 25 omits `0xA4` for unmodified patterns). Mirror by
+    // emitting `null` for undefined.
+    length: p.length ?? null,
     looped: p.looped ?? false,
     notes: p.notes.map(toNote),
     controllers: p.controllers.map(() => ({})), // TODO: Controller shape

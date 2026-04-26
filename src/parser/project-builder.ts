@@ -28,6 +28,11 @@ const OP_CHANNEL_ENABLED = 0x00;
 const OP_CHANNEL_PING_PONG = 0x14;
 /** Channel "is locked" flag (u8 bool, FL 12.3+). */
 const OP_CHANNEL_LOCKED = 0x20;
+/**
+ * Channel "routed to" — int8 (signed). Mixer insert index this
+ * channel feeds into; `-1` means unrouted / default.
+ */
+const OP_CHANNEL_ROUTED_TO = 0x16;
 const OP_CHANNEL_SAMPLE_PATH = 0xc4;
 /** Plugin internal-class name (UTF-16LE). On a bare sampler channel
  *  FL emits this as an empty string. */
@@ -56,6 +61,13 @@ const OP_PLUGIN_STATE = 0xd5;
 /** Shared name opcode. In a channel scope it's the channel name; in a
  *  mixer-slot scope it's the plugin name. Scope tracked via OP_NEW_SLOT. */
 const OP_NAME = 0xcb;
+/**
+ * Legacy channel-name fallback (UTF-16LE). FL 9-era files emit 0xC0
+ * for channel names where FL 25 files emit 0xCB; when both are
+ * present, 0xCB wins (matches the reference parser's first-wins
+ * priority over identifier order).
+ */
+const OP_CHANNEL_NAME = 0xc0;
 /** Mixer-effect-slot boundary. Each new slot flips the walker's
  *  current-scope to "slot", ending channel attribution for subsequent
  *  0xCB events. */
@@ -281,7 +293,29 @@ export function buildMetadata(events: readonly FLPEvent[]): ProjectMetadata {
  * Everything else in the event stream is ignored at this step — pattern,
  * mixer, and arrangement extraction are separate walkers (Phase 3.3.x).
  */
-export function buildChannels(events: readonly FLPEvent[]): Channel[] {
+/**
+ * Text-event encoding predicate. Text events (TEXT range 0xC0–0xCF)
+ * are ASCII on FL <11.5 and UTF-16LE on FL 11.5+. When the channel
+ * walker sees a text-range event (0xC0 channel name, primarily), it
+ * needs to know which encoding to use. `legacyText` is true for
+ * pre-FL-11.5.
+ */
+function isLegacyText(meta: ProjectMetadata | undefined): boolean {
+  const v = meta?.version;
+  if (!v) return false;
+  return v.major < 11 || (v.major === 11 && v.minor < 5);
+}
+
+function decodeTextEvent(payload: Uint8Array, legacy: boolean): string {
+  if (legacy) return decodeUtf8Bytes(payload);
+  return decodeUtf16LeBytes(payload);
+}
+
+export function buildChannels(
+  events: readonly FLPEvent[],
+  metadata?: ProjectMetadata,
+): Channel[] {
+  const legacy = isLegacyText(metadata);
   const channels: Channel[] = [];
   let current: Channel | undefined;
   /**
@@ -344,6 +378,11 @@ export function buildChannels(events: readonly FLPEvent[]): Channel[] {
       current.locked = ev.value !== 0;
       continue;
     }
+    if (ev.opcode === OP_CHANNEL_ROUTED_TO && ev.kind === "u8" && current.targetInsert === undefined) {
+      // The event is BYTE-range u8; treat as signed int8. 0xFF → -1 (unrouted).
+      current.targetInsert = ev.value > 127 ? ev.value - 256 : ev.value;
+      continue;
+    }
     if (ev.opcode === OP_PLUGIN_COLOR && ev.kind === "u32" && current.color === undefined) {
       current.color = unpackRGBA(ev.value);
       continue;
@@ -378,7 +417,18 @@ export function buildChannels(events: readonly FLPEvent[]): Channel[] {
       continue;
     }
     if (ev.opcode === OP_NAME && ev.kind === "blob" && current.name === undefined) {
-      current.name = decodeUtf16LeBytes(ev.payload);
+      current.name = decodeTextEvent(ev.payload, legacy);
+      continue;
+    }
+    if (
+      ev.opcode === OP_CHANNEL_NAME &&
+      ev.kind === "blob" &&
+      current.name === undefined
+    ) {
+      // Fallback channel-name source — matches the reference parser's first-wins
+      // order `the event projection(the plugin-name event, the legacy channel-name event)`. FL 9
+      // emits names here; FL 25 uses 0xCB (OP_NAME) above.
+      current.name = decodeTextEvent(ev.payload, legacy);
       continue;
     }
     // scope hygiene: `current` loses channel-scope events once we cross
@@ -522,24 +572,27 @@ export function buildMixerInserts(events: readonly FLPEvent[]): MixerInsert[] {
     }
     if (ev.opcode === OP_INSERT_NAME && ev.kind === "blob" && pendingInsert.name === undefined) {
       inMixerSection = true;
-      // FL emits 0xCC as a 1-byte null-only placeholder on every insert
-      // of a legacy (FL 9-era) mixer layout — the event announces the
-      // insert boundary, not a user-assigned name. Python skips these
-      // empty payloads (they decode to ""); mirror that so
-      // `named_inserts` matches across FL versions.
-      const name = decodeUtf16LeBytes(ev.payload);
-      if (name.length > 0) pendingInsert.name = name;
+      // Always record whatever the name event decoded to — empty
+      // string included. The reference parser returns '' for empty
+      // UTF-16 payloads (FL 9 emits 1-byte null placeholders on
+      // every insert boundary). Callers that want "user-assigned
+      // name only" should filter by `name.length > 0` (e.g. Pass 1's
+      // `named_inserts`).
+      pendingInsert.name = decodeUtf16LeBytes(ev.payload);
       continue;
     }
-    if (ev.opcode === OP_INSERT_COLOR && ev.kind === "u32" && pendingInsert.color === undefined && inMixerSection) {
+    if (ev.opcode === OP_INSERT_COLOR && ev.kind === "u32" && pendingInsert.color === undefined) {
+      inMixerSection = true;
       pendingInsert.color = unpackRGBA(ev.value);
       continue;
     }
-    if (ev.opcode === OP_INSERT_ICON && ev.kind === "u16" && pendingInsert.icon === undefined && inMixerSection) {
+    if (ev.opcode === OP_INSERT_ICON && ev.kind === "u16" && pendingInsert.icon === undefined) {
+      inMixerSection = true;
       pendingInsert.icon = ev.value;
       continue;
     }
-    if (ev.opcode === OP_INSERT_INPUT && ev.kind === "u32" && pendingInsert.input === undefined && inMixerSection) {
+    if (ev.opcode === OP_INSERT_INPUT && ev.kind === "u32" && pendingInsert.input === undefined) {
+      inMixerSection = true;
       if (ev.value !== ROUTING_UNSET) pendingInsert.input = ev.value;
       continue;
     }
