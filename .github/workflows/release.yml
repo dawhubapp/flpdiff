@@ -91,9 +91,17 @@ jobs:
           bun-version: latest
       - uses: actions/setup-node@v4
         with:
-          node-version: "22"
-      - name: Upgrade npm to OIDC-capable version
-        run: npm install -g npm@latest
+          node-version: "24"
+      # Node 24 ships with npm >= 11, but we need >= 11.5 for OIDC.
+      # `npm install -g npm@latest` is unreliable (in-place upgrade
+      # races with the running process — promise-retry MODULE_NOT_FOUND).
+      # Corepack is the Node-recommended way to swap package managers
+      # cleanly: it installs into a separate cache and shims the PATH.
+      - name: Ensure npm supports OIDC trusted publishing
+        run: |
+          corepack enable
+          corepack prepare npm@latest --activate
+          npm --version
       - run: bun install --frozen-lockfile
       - name: Publish
         run: npm publish --access public --provenance
