@@ -6,7 +6,8 @@ import {
   extractHeadline,
   type Headline,
 } from "../src/diff/headline.ts";
-import { run } from "../src/cli.ts";
+import { run, handleError, ISSUE_URL } from "../src/cli.ts";
+import { FLPParseError } from "../src/parser/errors.ts";
 import { parseFLPFile } from "../src/index.ts";
 
 const CORPUS_DIR = resolve(import.meta.dir, "./corpus/re_base/fl25");
@@ -146,5 +147,120 @@ describe("CLI — info subcommand", () => {
   test("info without file prints usage + exits 2", async () => {
     const code = await run(["info"]);
     expect(code).toBe(2);
+  });
+});
+
+describe("CLI — error reporting nudges", () => {
+  /** Capture console.error calls produced during `fn()`. */
+  async function captureStderr(fn: () => unknown | Promise<unknown>): Promise<string> {
+    const origErr = console.error;
+    const lines: string[] = [];
+    console.error = (...args: unknown[]) => {
+      lines.push(args.map((a) => (typeof a === "string" ? a : String(a))).join(" "));
+    };
+    try {
+      await fn();
+    } finally {
+      console.error = origErr;
+    }
+    return lines.join("\n");
+  }
+
+  test("ISSUE_URL points at the dawhubapp issues tracker", () => {
+    expect(ISSUE_URL).toBe("https://github.com/dawhubapp/flpdiff/issues");
+  });
+
+  test("FLPParseError → 'FLP variant' nudge with FL-version + .flp guidance", async () => {
+    const err = new FLPParseError(
+      {
+        schemaName: "FLhd",
+        byteOffsetAbsolute: 0,
+        nestingPath: ["FLPProject", "FLhd"],
+      },
+      "magic mismatch",
+    );
+    const out = await captureStderr(() => {
+      const code = handleError(err);
+      expect(code).toBe(2);
+    });
+    expect(out).toContain("flpdiff: parse error");
+    expect(out).toContain("hasn't seen this exact FLP variant yet");
+    expect(out).toContain(ISSUE_URL);
+    expect(out).toContain("FL Studio version");
+    expect(out).toContain("flpdiff info");
+    expect(out).toContain(".flp");
+  });
+
+  test("plain Error → soft 'If this looks like a bug' nudge with URL", async () => {
+    const err = new Error("ENOENT: no such file or directory, open '/x.flp'");
+    const out = await captureStderr(() => {
+      const code = handleError(err);
+      expect(code).toBe(2);
+    });
+    expect(out).toContain("flpdiff: ENOENT");
+    expect(out).toContain("If this looks like a bug");
+    expect(out).toContain(ISSUE_URL);
+    // Soft branch must NOT use the FLPParseError-specific phrasing.
+    expect(out).not.toContain("FLP variant");
+    // Stack trace stays hidden unless FLPDIFF_DEBUG is set. The
+    // V8 stack format always begins with "Error: <msg>"; absence of
+    // that header means no stack was printed.
+    expect(out).not.toMatch(/^Error: /m);
+  });
+
+  test("plain Error with FLPDIFF_DEBUG=1 → includes stack trace", async () => {
+    const orig = process.env.FLPDIFF_DEBUG;
+    process.env.FLPDIFF_DEBUG = "1";
+    try {
+      const err = new Error("boom");
+      const out = await captureStderr(() => {
+        handleError(err);
+      });
+      expect(out).toContain("flpdiff: boom");
+      expect(out).toContain("Error: boom");
+      expect(out).toContain(ISSUE_URL);
+    } finally {
+      if (orig === undefined) delete process.env.FLPDIFF_DEBUG;
+      else process.env.FLPDIFF_DEBUG = orig;
+    }
+  });
+
+  test("non-Error throw → 'This looks like a bug' nudge with URL", async () => {
+    const out = await captureStderr(() => {
+      const code = handleError("something weird happened");
+      expect(code).toBe(2);
+    });
+    expect(out).toContain("flpdiff: something weird happened");
+    expect(out).toContain("This looks like a bug");
+    expect(out).toContain(ISSUE_URL);
+  });
+
+  test("non-Error throw with object stringifies via String()", async () => {
+    const out = await captureStderr(() => {
+      handleError({ kind: "weirdness" });
+    });
+    expect(out).toContain("flpdiff:");
+    expect(out).toContain(ISSUE_URL);
+  });
+
+  test("end-to-end: malformed file run() emits parse-error nudge to stderr", async () => {
+    const bogus = "/tmp/flpdiff-bogus-nudge.flp";
+    await Bun.write(bogus, new Uint8Array([0x00, 0x01, 0x02, 0x03]));
+    const out = await captureStderr(async () => {
+      const code = await run([bogus, bogus]);
+      expect(code).toBe(2);
+    });
+    expect(out).toContain("flpdiff: parse error");
+    expect(out).toContain(ISSUE_URL);
+    expect(out).toContain("FLP variant");
+  });
+
+  test("end-to-end: nonexistent file run() emits soft bug nudge to stderr", async () => {
+    const out = await captureStderr(async () => {
+      const code = await run([BASE, "/tmp/definitely-not-here.flp"]);
+      expect(code).toBe(2);
+    });
+    expect(out).toContain(ISSUE_URL);
+    expect(out).toContain("If this looks like a bug");
   });
 });

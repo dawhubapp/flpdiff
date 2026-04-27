@@ -34,6 +34,8 @@ const EXIT_IDENTICAL = 0;
 const EXIT_DIFFERENCES = 1;
 const EXIT_ERROR = 2;
 
+export const ISSUE_URL = "https://github.com/dawhubapp/flpdiff/issues";
+
 const USAGE = `Usage:
   flpdiff [--verbose] [--color|--no-color] <A.flp> <B.flp>
                                               Semantic diff between two FLPs
@@ -254,19 +256,46 @@ function runGitVerify(argv: readonly string[]): number {
   return 0;
 }
 
-function handleError(e: unknown): number {
+export function handleError(e: unknown): number {
   if (e instanceof FLPParseError) {
     console.error(`flpdiff: parse error\n${e.message}`);
+    console.error("");
+    console.error("This usually means flpdiff hasn't seen this exact FLP variant yet.");
+    console.error(`Please report it at ${ISSUE_URL}`);
+    console.error("Include the FL Studio version (run `flpdiff info <file.flp>` to find it)");
+    console.error("and attach the .flp if you can share it.");
   } else if (e instanceof Error) {
     console.error(`flpdiff: ${e.message}`);
+    if (e.stack && process.env.FLPDIFF_DEBUG) {
+      console.error(e.stack);
+    }
+    console.error("");
+    console.error(`If this looks like a bug, please report it at ${ISSUE_URL}`);
   } else {
     console.error(`flpdiff: ${String(e)}`);
+    console.error("");
+    console.error(`This looks like a bug. Please report it at ${ISSUE_URL}`);
   }
   return EXIT_ERROR;
 }
 
 // Entry-point guard. When imported for tests, do not auto-run.
 if (import.meta.main) {
-  const code = await run(Bun.argv.slice(2));
-  process.exit(code);
+  // Last-resort safety net: if anything escapes run()'s per-subcommand
+  // try/catch (e.g. a sync throw before await, or an unhandled async
+  // rejection from a code path that forgot to handle), we still want
+  // the user to see a friendly bug-report nudge instead of Bun's
+  // default stack-trace dump.
+  process.on("uncaughtException", (e) => {
+    process.exit(handleError(e));
+  });
+  process.on("unhandledRejection", (e) => {
+    process.exit(handleError(e));
+  });
+  try {
+    const code = await run(Bun.argv.slice(2));
+    process.exit(code);
+  } catch (e) {
+    process.exit(handleError(e));
+  }
 }
