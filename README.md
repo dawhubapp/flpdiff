@@ -250,6 +250,15 @@ See [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) for the full
 development story — phase tracking, parity harnesses, format-spec
 contributions, opcode catalog, and the clean-room boundary policy.
 
+## Acknowledgments
+
+Huge thanks to [**PyFLP**](https://github.com/demberto/PyFLP) by
+[@demberto](https://github.com/demberto) — an open-source
+FL Studio project parser, written in Python. PyFLP is a thorough,
+well-documented community effort and a real labour of love. `flpdiff`
+is an independent clean-room TypeScript implementation, but
+PyFLP set the bar and helped to make it possible.
+
 ## Contributing
 
 Issues and PRs welcome. See [`CONTRIBUTING.md`](CONTRIBUTING.md).
