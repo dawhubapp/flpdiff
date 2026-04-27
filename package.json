@@ -1,7 +1,7 @@
 {
   "name": "flpdiff",
   "version": "0.1.0",
-  "description": "Clean-room FL Studio (.flp) parser + semantic diff — no Python, no install prerequisites.",
+  "description": "FL Studio (.flp) parser + semantic diff — no Python, no install prerequisites.",
   "keywords": [
     "fl-studio",
     "flp",
