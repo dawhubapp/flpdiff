@@ -64,5 +64,5 @@ personal corpus spanning FL 9 through 25:
 - **Rendered diff text vs reference**: MD5-identical output on 5 of 6
   real-world diff pairs; the 6th is the same VST-vendor edge case.
 
-[Unreleased]: https://github.com/pronskiy/flpdiff/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/pronskiy/flpdiff/releases/tag/v0.1.0
+[Unreleased]: https://github.com/dawhubapp/flpdiff/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/dawhubapp/flpdiff/releases/tag/v0.1.0

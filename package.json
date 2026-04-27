@@ -23,13 +23,13 @@
     "email": "roman@pronskiy.com",
     "url": "https://pronskiy.com"
   },
-  "homepage": "https://github.com/pronskiy/flpdiff",
+  "homepage": "https://github.com/dawhubapp/flpdiff",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/pronskiy/flpdiff.git"
+    "url": "git+https://github.com/dawhubapp/flpdiff.git"
   },
   "bugs": {
-    "url": "https://github.com/pronskiy/flpdiff/issues"
+    "url": "https://github.com/dawhubapp/flpdiff/issues"
   },
   "module": "src/index.ts",
   "main": "src/index.ts",

@@ -70,7 +70,7 @@ bunx flpdiff A.flp B.flp
 
 ```sh
 # macOS (Apple Silicon)
-curl -L https://github.com/pronskiy/flpdiff/releases/latest/download/flpdiff-darwin-arm64 -o /usr/local/bin/flpdiff
+curl -L https://github.com/dawhubapp/flpdiff/releases/latest/download/flpdiff-darwin-arm64 -o /usr/local/bin/flpdiff
 chmod +x /usr/local/bin/flpdiff
 
 # macOS (Intel) → flpdiff-darwin-x64
@@ -85,7 +85,7 @@ chmod +x /usr/local/bin/flpdiff
 bun install -g flpdiff
 ```
 
-[releases]: https://github.com/pronskiy/flpdiff/releases
+[releases]: https://github.com/dawhubapp/flpdiff/releases
 [bun]: https://bun.sh
 
 ## Two ways to use it
@@ -240,7 +240,7 @@ To compare two FLPs that aren't tracked in any repo, use
 ## Development
 
 ```sh
-git clone https://github.com/pronskiy/flpdiff
+git clone https://github.com/dawhubapp/flpdiff
 cd flpdiff
 bun install
 bun test
