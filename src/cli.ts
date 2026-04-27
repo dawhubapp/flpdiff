@@ -29,12 +29,14 @@ import {
   type DriverMode,
 } from "./git.ts";
 import { basename } from "node:path";
+import packageJson from "../package.json" with { type: "json" };
 
 const EXIT_IDENTICAL = 0;
 const EXIT_DIFFERENCES = 1;
 const EXIT_ERROR = 2;
 
 export const ISSUE_URL = "https://github.com/dawhubapp/flpdiff/issues";
+const VERSION: string = packageJson.version;
 
 const USAGE = `Usage:
   flpdiff [--verbose] [--color|--no-color] <A.flp> <B.flp>
@@ -54,9 +56,6 @@ Exit codes (diff):
 `;
 
 const SUBCOMMANDS = new Set(["info", "git-setup", "git-driver", "git-verify"]);
-
-// Version is read from package.json at build time; for now, inline.
-const VERSION = "0.1.0";
 
 export async function run(argv: readonly string[]): Promise<number> {
   if (argv.length === 0) {

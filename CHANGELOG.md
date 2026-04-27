@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.2] — 2026-04-27
+
+### Fixed
+
+- `flpdiff --version` now reports the actual package version. Prior
+  releases returned a hardcoded `0.1.0` regardless of the installed
+  version because the CLI's `VERSION` constant was inlined. The CLI
+  now reads it from `package.json` at startup, so future bumps stay
+  in sync automatically.
+
 ## [0.1.1] — 2026-04-27
 
 ### Changed
@@ -71,6 +81,7 @@ personal corpus spanning FL 9 through 25:
 - **Rendered diff text vs reference**: MD5-identical output on 5 of 6
   real-world diff pairs; the 6th is the same VST-vendor edge case.
 
-[Unreleased]: https://github.com/dawhubapp/flpdiff/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/dawhubapp/flpdiff/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/dawhubapp/flpdiff/releases/tag/v0.1.2
 [0.1.1]: https://github.com/dawhubapp/flpdiff/releases/tag/v0.1.1
 [0.1.0]: https://github.com/dawhubapp/flpdiff/releases/tag/v0.1.0

@@ -103,12 +103,5 @@ jobs:
           corepack prepare npm@latest --activate
           npm --version
       - run: bun install --frozen-lockfile
-      - name: OIDC env diagnostic (temporary, remove after debugging)
-        run: |
-          echo "ACTIONS_ID_TOKEN_REQUEST_URL set? ${ACTIONS_ID_TOKEN_REQUEST_URL:+yes}"
-          echo "ACTIONS_ID_TOKEN_REQUEST_TOKEN set? ${ACTIONS_ID_TOKEN_REQUEST_TOKEN:+yes}"
-          echo "npm version: $(npm --version)"
-          echo "node version: $(node --version)"
-          echo "Effective registry: $(npm config get registry)"
       - name: Publish
-        run: npm publish --access public --provenance --loglevel=verbose
+        run: npm publish --access public --provenance
