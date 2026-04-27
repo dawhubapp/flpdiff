@@ -71,11 +71,19 @@ jobs:
             dist/flpdiff-linux-arm64
             dist/flpdiff-windows-x64.exe
 
-  # Publish to npm. Requires NPM_TOKEN repository secret.
+  # Publish to npm via OIDC trusted publishing. The npm registry is
+  # configured to trust this repository + workflow, so no NPM_TOKEN is
+  # needed. Requirements:
+  #   - id-token: write permission (lets Actions mint an OIDC token)
+  #   - npm CLI >= 11.5 (older versions don't speak OIDC)
+  #   - --provenance to also generate a provenance attestation
   npm-publish:
     name: Publish to npm
     needs: build-binaries
     runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
@@ -83,10 +91,9 @@ jobs:
           bun-version: latest
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
-          registry-url: "https://registry.npmjs.org"
+          node-version: "22"
+      - name: Upgrade npm to OIDC-capable version
+        run: npm install -g npm@latest
       - run: bun install --frozen-lockfile
       - name: Publish
-        run: npm publish --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --access public --provenance
