@@ -1,9 +1,34 @@
 # flpdiff
 
-Semantic diff for FL Studio `.flp` project files — tempo changes,
-renamed channels, moved clips, plugin swaps, mixer tweaks, per-note
-edits. Clean-room parser in TypeScript. No Python, no Image-Line
-tools needed.
+See what changed between two FL Studio `.flp` saves — channel by
+channel, note by note.
+
+[![npm version](https://img.shields.io/npm/v/flpdiff.svg)](https://www.npmjs.com/package/flpdiff)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+![FL Studio 9–25](https://img.shields.io/badge/FL%20Studio-9%E2%80%9325-orange)
+
+Every producer has this folder:
+
+```
+track_1.flp
+track_2.flp
+track_3_final.flp
+track_3_final_2.flp
+track_3_final_2_FINAL_real.flp
+```
+
+You saved them during a long session. A week later you open the
+latest one, something feels off, and you want to go back — but back
+to what? Which version had the bassline that worked? Which had the
+EQ move that opened the mix? The files are binary. Opening two FL
+Studio instances and squinting at 40 channels and 30 patterns isn't
+happening. So you guess, start over, or live with the wrong version.
+
+Or a collaborator sends back the project with "added some drums,
+moved the breakdown." Git just says *Binary files differ.*
+
+`flpdiff` reads both files and tells you, in plain English, exactly
+what's different.
 
 ```
 $ flpdiff v1.flp v2.flp
@@ -28,12 +53,20 @@ Arrangements:
           + 9 clips of 'Dub Vocal' added (length 5.854 beats, beats 62 … 206)
 ```
 
+No FL Studio install needed. No Python. Just a small TypeScript binary
+that knows the FLP format.
+
+## Try it in 10 seconds
+
+```sh
+bunx flpdiff A.flp B.flp
+```
+
+
 ## Install
 
-**Standalone binary** (no dependencies, no runtime):
-
-Download the release for your platform from the [Releases page][releases]
-and drop it on your `$PATH`:
+**Standalone binary** — no runtime, no dependencies. Drop it on your
+`$PATH`:
 
 ```sh
 # macOS (Apple Silicon)
@@ -46,41 +79,86 @@ chmod +x /usr/local/bin/flpdiff
 # Windows (x64) → flpdiff-windows-x64.exe
 ```
 
-**Or via npm** (requires [Bun][bun] ≥ 1.3):
+**Or via Bun:**
 
 ```sh
 bun install -g flpdiff
-# or, without installing globally:
-bunx flpdiff A.flp B.flp
 ```
 
 [releases]: https://github.com/pronskiy/flpdiff/releases
 [bun]: https://bun.sh
 
-## Commands
+## Two ways to use it
 
-```
-flpdiff [--verbose] [--color|--no-color] <A.flp> <B.flp>
-                                            Semantic diff of two FLPs
-flpdiff info <file.flp> [--format F]        Inspect a single FLP
-                                              F ∈ text (default) | json | canonical
-flpdiff git-setup [--global] [--textconv] [--lfs]
-                                            Configure git to diff .flp files semantically
-flpdiff git-verify                          Diagnose the current repo's flpdiff git setup
-flpdiff git-driver <args>                   Internal: git external-diff entry
-flpdiff --help | --version
+### 1. Side-by-side compare
+
+```sh
+flpdiff old.flp new.flp
 ```
 
-Exit codes (for `flpdiff A.flp B.flp`): `0` identical, `1` differences found,
-`2` parse / I/O error. Works in CI pipelines.
+Exit codes are CI-friendly: `0` if the projects are identical, `1`
+if there are differences, `2` on parse or I/O errors. Pipe the
+output, drop it in a build step, fail a PR check on unintended
+plugin swaps — the usual.
 
-Colour is auto-enabled on TTY stdout and disabled when piped or when
-`NO_COLOR` is set. Use `--color` / `--no-color` to force either way.
-Only the top-level `+` / `-` / `~` markers are painted; sub-bullets and
-headers stay in the terminal's default colour so long diffs don't read
-like jelly-bean spew.
+### 2. As a `git diff` driver
 
-### `flpdiff info`
+You can save your FL Studio projects to Git and have a version control.
+
+However, as .flp files are binary files, you will seeg *Binary files differ* on every `.flp` change. 
+
+**flpdiff** in one command turns FLPs into first-class diffable content in any repo:
+
+```sh
+$ flpdiff git-setup
+flpdiff git-setup (OK): scope=local, mode=command
+  attributes: /path/to/repo/.gitattributes (updated)
+  executable: /usr/local/bin/flpdiff
+  $ git config --local diff.flp.command /usr/local/bin/flpdiff git-driver
+  $ git config --local --unset diff.flp.textconv
+  verify with: flpdiff git-verify
+  try: git diff <changed.flp>
+```
+
+Once configured, every git command that normally shows diffs picks
+up the FLP semantic diff:
+
+```sh
+git diff                    # after editing + saving an FLP in FL Studio
+git diff HEAD~1 HEAD        # what changed in the last commit
+git log -p my_track.flp     # full history
+git show <sha>              # what a specific commit did
+```
+
+Add `--global` to wire it up for every repo on your machine, or
+`--lfs` if your project tree lives in [Git LFS][lfs].
+
+[lfs]: https://git-lfs.com
+
+## What it picks up
+
+Concrete, musician-friendly descriptions — not opcode dumps:
+
+- **Project basics** — tempo, title, artists, genre, sample paths.
+- **Channels** — added, removed, renamed; volume / pan / colour
+  tweaks; plugin swaps with vendor info; automation-curve edits
+  rendered in beats and bars.
+- **Patterns** — rename, length, loop status, colour; per-note
+  changes labelled musically ("C5 on channel 1 moved 1/2 beat
+  later").
+- **Mixer** — per-insert rename / colour / volume / pan / stereo
+  separation / routing / enable / lock; per-slot plugin swaps with
+  position hints.
+- **Arrangements** — track renames; clip add / remove / move /
+  modify in musical units; smart collapsing when you nudged a run
+  of similar clips ("9 clips of 'Dub Vocal' added") instead of
+  nine near-identical lines.
+
+Every change carries a pre-rendered human label; the text and JSON
+outputs render from the same `DiffResult`, so scripts and humans
+agree on what happened.
+
+## Inspect a single project
 
 ```sh
 $ flpdiff info my_track.flp
@@ -96,108 +174,37 @@ Plugins: Serum, Fruity Limiter, Fruity Parametric EQ 2, Sytrus, … and 4 more
 Samples: 909 Kick.wav, Hat_closed.wav, vocal_chop_01.wav, … and 12 more
 ```
 
-`--format json` emits the full project structure for scripting.
-`--format canonical` is a deterministic line-oriented dump used
-by the git textconv integration — stable across saves, per-entity.
+`flpdiff info <file> --format json` emits the full project
+structure for scripting. `--format canonical` produces a stable,
+line-oriented dump used by the git textconv integration.
 
-### Git integration
+## FL Studio compatibility
 
-Turn `.flp` files into first-class diffable content in any repo:
+Tested across every FL major from 9 through 25, against 85 real-world
+projects (vocals, chord progressions, drum chops, multi-bar
+arrangements, VST-heavy and native-only mixes):
 
-```sh
-$ flpdiff git-setup
-flpdiff git-setup (OK): scope=local, mode=command
-  attributes: /path/to/repo/.gitattributes (updated)
-  executable: /usr/local/bin/flpdiff
-  $ git config --local diff.flp.command /usr/local/bin/flpdiff git-driver
-  $ git config --local --unset diff.flp.textconv
-  verify with: flpdiff git-verify
-  try: git diff <changed.flp>
-```
+| FL version      | Parser | `info --format json` |
+|:----------------|:------:|:--------------------:|
+| FL 9 – 24       | 100%   | 100%                 |
+| FL 25 (current) | 100%   | 100%                 |
 
-Once configured, **any** git command that normally shows diffs now
-shows a semantic FLP diff instead of "Binary files differ":
+## flpdiff and dawhub
 
-```sh
-git diff                    # after editing + saving an FLP in FL Studio
-git diff HEAD~1 HEAD        # what changed in the last commit
-git log -p my_track.flp     # full history
-git show <sha>              # what a specific commit did
-```
+`flpdiff` is the free, MIT-licensed CLI. If you'd rather drag two
+`.flp` files onto a web page, share a link with a collaborator, or
+keep version history in the cloud — that's [dawhub][dawhub], a
+hosted product built on top of `flpdiff`. Same diff engine, browser
+UI, plus collaboration. The CLI here stays free forever.
 
-Options:
-
-- `--global` writes to your global git config + global attributes file
-  so every repo on your machine gets the FLP diff.
-- `--textconv` uses git's native line-based diff on the canonical text
-  output (cacheable, works well with git blame, slightly less rich
-  than the default `command` mode).
-- `--lfs` also tracks `*.flp` via [Git LFS][lfs] — useful for large
-  sample-heavy projects. Implies repo-local scope.
-
-Run `flpdiff git-verify` to sanity-check the current repo's setup
-(checks you're inside a git repo, `.gitattributes` has the FLP rule,
-`diff.flp.command` is set, and the configured binary executes).
-
-#### Diffing two files not tracked in a repo
-
-The `git diff` driver fires on **tracked changes** inside a repo. To
-compare two arbitrary FLP files that aren't version-controlled, use
-`git diff --no-index` (forces the two-file compare mode):
-
-```sh
-git diff --no-index v1.flp v2.flp
-# or bypass git entirely:
-flpdiff v1.flp v2.flp
-```
-
-[lfs]: https://git-lfs.com
-
-## What's detected
-
-- **Metadata**: tempo, title, artists, genre, URL, data-path changes.
-- **Channels**: added / removed / renamed; volume / pan / color tweaks;
-  plugin swaps (with vendor + VST hosting); sample-path changes;
-  automation-curve keyframe deltas in musical units.
-- **Patterns**: rename, length, looping, color, per-note edits
-  (added / removed / moved / modified — with pitch labels like
-  "C5 on channel 1 moved 1/2 beat later").
-- **Mixer**: per-insert rename, color, volume, pan, stereo-separation,
-  routing, enabled/locked toggles; per-slot plugin swaps with
-  slot-position hints.
-- **Arrangements**: track renames, per-clip add / remove / move / modify
-  diffs with musical-unit shift descriptions, plus automatic collapse
-  when a user nudged / duplicated / reshaped a run of similar clips
-  ("9 clips of 'Dub Vocal' added (length 5.854 beats, beats 62 … 206)"
-  instead of 9 near-identical lines).
-
-Every change carries a pre-rendered human-readable label; the text
-formatter and the JSON output render from the same underlying
-`DiffResult`, so scripting consumers and human readers agree on what
-happened.
-
-## FL Studio version support
-
-Tested against every FL major from 9 through 25, reproducing Python
-`flpdiff`'s output byte-for-byte where available:
-
-| FL version     | Parser (Pass 1) | flp-info JSON (Pass 2) |
-|:---------------|:---------------:|:----------------------:|
-| FL 9 – 24      | 100%            | 100%                   |
-| FL 25 (current)| 100%            | 100%                   |
-
-Covers 85 real-world projects spanning vocals, chord progressions,
-drum chops, multi-bar arrangements, VST-heavy and native-only mixes.
-One file is a known edge case where `flpdiff` is intentionally more
-faithful than the reference Python tool (a VST vendor string we
-extract but Python misses). See [`docs/parity-gaps.md`](docs/parity-gaps.md).
+[dawhub]: https://dawhub.app
 
 ## How it works
 
 `flpdiff` ships a clean-room FLP parser written from first principles
-against direct byte inspection of FL Studio saves + the publicly
-documented event-stream format. No code was copied from existing FLP
-libraries; format facts were cross-checked only where legally distinct
+against direct byte inspection of FL Studio saves and the publicly
+documented event-stream format. No code copied from existing FLP
+libraries; format facts cross-checked only where legally distinct
 from code reuse. The result is a small, fast, dependency-free parser
 with no GPL lineage.
 
@@ -205,11 +212,32 @@ Built on [Bun][bun] + [typed-binary][tb] + TypeScript 6.
 
 [tb]: https://github.com/iwoplaza/typed-binary
 
-## Development
+<details>
+<summary><b>Full CLI reference</b></summary>
 
-See [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) for the full development
-story — phase-tracking, parity harnesses, format-spec contributions,
-opcode catalog, and the clean-room boundary policy.
+```
+flpdiff [--verbose] [--color|--no-color] <A.flp> <B.flp>
+                                            Semantic diff of two FLPs
+flpdiff info <file.flp> [--format F]        Inspect a single FLP
+                                              F ∈ text (default) | json | canonical
+flpdiff git-setup [--global] [--textconv] [--lfs]
+                                            Configure git to diff .flp files semantically
+flpdiff git-verify                          Diagnose the current repo's flpdiff git setup
+flpdiff git-driver <args>                   Internal: git external-diff entry
+flpdiff --help | --version
+```
+
+Colour auto-enables on TTY stdout and disables when piped or when
+`NO_COLOR` is set. Use `--color` / `--no-color` to force either way.
+Only top-level `+` / `-` / `~` markers get painted; sub-bullets and
+headers stay neutral so long diffs don't read like jelly-bean spew.
+
+To compare two FLPs that aren't tracked in any repo, use
+`git diff --no-index v1.flp v2.flp` — or just `flpdiff v1.flp v2.flp`.
+
+</details>
+
+## Development
 
 ```sh
 git clone https://github.com/pronskiy/flpdiff
@@ -218,20 +246,18 @@ bun install
 bun test
 ```
 
-During development, parity is verified against the reference
-Python implementation via three harnesses (counts-and-kinds shape,
-full `flp-info --format=json` byte-for-byte, and `flpdiff` rendered
-text). They live in the dev-side `python/tools/parity/` of the
-parent project and aren't part of this TS package — end users don't
-need any of it.
+See [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) for the full
+development story — phase tracking, parity harnesses, format-spec
+contributions, opcode catalog, and the clean-room boundary policy.
 
 ## Contributing
 
-Issues + PRs welcome. See [`CONTRIBUTING.md`](CONTRIBUTING.md).
+Issues and PRs welcome. See [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
-Bug reports: please include the FL Studio version that saved the file
-(`flpdiff info <file>` shows it), the output of `flpdiff info --format=json`,
-and — if you can share — the `.flp` itself or a minimal repro.
+For bug reports: include the FL Studio version that saved the file
+(`flpdiff info <file>` shows it), the JSON output of
+`flpdiff info <file> --format json`, and — if you can share — the
+`.flp` itself or a minimal repro.
 
 ## License
 
