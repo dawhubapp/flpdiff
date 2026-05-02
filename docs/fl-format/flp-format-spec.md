@@ -80,24 +80,21 @@ payload bits; high bit set means "more bytes follow". 70 encodes as
 FL 25 introduced opcodes that violate the range rule. Each override
 specifies an alternative payload encoding.
 
-#### `utf16_zterm`
+#### `byte3`
 
-UTF-16LE string terminated by a `00 00` pair at an even byte offset.
-**No size prefix**; the byte immediately after the opcode is the low
-byte of the first UTF-16 code unit. The captured payload retains the
-terminator.
+Fixed 3-byte payload, no size prefix. Captured as a blob since
+the semantic content is not yet decoded.
 
-| Opcode | Name           | Status    | Notes |
-|--------|----------------|-----------|-------|
-| `0x36` | FL version banner | confirmed | Example payload: `"FL Studio 25.2.4.4960.4960\0"`. The 1-byte-payload range-rule fragment of `0x36` in FL 24 and earlier was either unused or differently interpreted; pre-FL-25 files can safely be parsed as if the override applies (they do not emit `0x36` at all). |
+| Opcode | Name | Status | Notes |
+|--------|------|--------|-------|
+| `0xAC` | (TBD project flag) | confirmed | Example payload bytes: `01 01 00`. Falls in the DWORD range under the classic rule but only carries 3 bytes; treating as 4 bytes consumes the next event's opcode. See `fl25-event-format.md` and issue #1. |
 
 #### Pending overrides
 
-`0xC0` carries a *compound blob* — a nested event stream of project
-properties (tempo, loop mode, time signature, pan law, title). It
-remains varint-prefixed (no size override), but its payload requires a
-second-pass decoder. Out of scope for Phase 3.1–3.2; belongs to
-Phase 3.3 when compound blobs are decoded.
+`0xC0` (TEXT range, varint length + payload) is the standard rule and
+needs no override. In FL 25 minimal saves the first `0xC0` is the
+project's UTF-16 version banner; PyFLP additionally documents larger
+`0xC0` payloads on FL 25 saves as an opaque project-properties blob.
 
 Additional FL 25 overrides will be added here as discovered.
 
@@ -115,7 +112,8 @@ output on all five FL 25 public fixtures.
 | `0x00` | BYTE (u8) | Channel IsEnabled | bool | Emitted on every channel in FL 25 saves; defaults true. |
 | `0x14` | BYTE (u8) | Channel PingPongLoop | bool | Default false; opcode emitted on every channel. |
 | `0x15` | BYTE (u8) | Channel type | See kind table below | Applies to the channel opened by the most-recent `0x40`. Values: 0=sampler, 2=instrument (FL labels this "Native"), 3=layer, 4=instrument, 5=automation. |
-| `0x36` | FL25 override (`utf16_zterm`) | FL version banner | UTF-16LE null-terminated | Full product-edition-and-version label, e.g. `"FL Studio 25.2.4.4960.4960\0"`. See §2.2. |
+| `0xC0` | DATA (varint + bytes) | FL version banner | Null-terminated UTF-16LE | Full product-edition-and-version label, e.g. `"FL Studio 25.2.4.4960.4960\0"`. First `0xC0` event in an FL 25 stream; disambiguated from FL 24's per-channel `0xC0` UTF-16 names by string prefix `"FL Studio"`. See §2.2. |
+| `0xAC` | FL25 override (`byte3`) | (TBD project flag) | 3 raw bytes | Range-rule violation: classic rule predicts 4-byte DWORD, real payload is 3 bytes. See §2.2. |
 | `0x40` | WORD (u16 LE) | New channel | Channel iid (uint16) | Announces a new channel. Subsequent channel-scoped events up to the next `0x40` belong to this iid. iids are contiguous `0..n-1` across the project. |
 | `0x41` | WORD (u16 LE) | Pattern identity marker | Pattern id (uint16) | Announces the current pattern id. **Fires twice per pattern** (once for note/controller grouping, once for other props) — walkers must dedup by id rather than treating each occurrence as a new pattern. |
 | `0x20` | BYTE (u8) | Channel IsLocked | bool | FL 12.3+. Default false; opcode emitted on every channel. |
@@ -143,7 +141,7 @@ output on all five FL 25 public fixtures.
 | `0xD5` | DATA (varint + bytes) | Plugin state blob | Plugin-specific binary | For **VST-wrapped** plugins (internalName `"Fruity Wrapper"`) the payload is the FL VST-wrapper record stream: 4-byte `type` header (first byte = FL serialization marker, one of 6/8/9/10/11/12), then repeating `{uint32 id, uint64 len, N bytes data}` records. Relevant record ids: 54=Name (UTF-8), 56=Vendor (UTF-8), 55=PluginPath, 51=FourCC, 52=GUID, 53=State (opaque preset data). For **native** FL plugins (e.g. Fruity Parametric EQ 2) the payload is plugin-specific state — the VST-wrapper record format does not apply; decode per-plugin. |
 | `0xE0` | DATA (varint + bytes) | Pattern notes (FL 25) | Dense array of 24-byte records | FL 25 emits pattern notes at `0xE0`; pre-FL-25 saves emit them at `0xD0` (another FL 25 +16 relocation, also seen with track data). Each record: `uint32 position`, `uint16 flags`, `uint16 rack_channel`, `uint32 length`, `uint16 key`, `uint16 group`, `uint8 fine_pitch`, `uint8 _reserved`, `uint8 release`, `uint8 midi_channel`, `uint8 pan`, `uint8 velocity`, `uint8 mod_x`, `uint8 mod_y`. All lengths in PPQ ticks. |
 | `0xC4` | DATA (varint + bytes) | Channel sample path | Null-terminated UTF-16LE | Full library path for the current channel's sample, e.g. `"%FLStudioFactoryData%/Data/Patches/Packs/Drums/Kicks/909 Kick.wav\0"`. Absent when the channel has no sample loaded (non-sampler kinds, or samplers before a file is dragged in). Scoped to the channel opened by the most-recent `0x40`. |
-| `0xC7` | DATA (varint + bytes) | FL version (ASCII) | Null-terminated ASCII | `"25.2.4.4960\0"`, 12 bytes on FL 25.2.4. Duplicated by the UTF-16 banner at `0x36` — the two strings serve different consumers. |
+| `0xC7` | DATA (varint + bytes) | FL version (ASCII) | Null-terminated ASCII | `"25.2.4.4960\0"`, 12 bytes on FL 25.2.4. Duplicated by the UTF-16 banner at `0xC0` — the two strings serve different consumers. |
 | `0xCB` | DATA (varint + bytes) | Channel/slot name (shared) | Null-terminated UTF-16LE | **Scope-sensitive.** In channel scope (after `0x40`, before any `0x62`) it's the channel name, e.g. `"Sampler"` / `"Kick"` / `"SerumTest"`. In slot scope (after `0x62`) it's the hosted plugin's display name, e.g. `"Fruity Parametric EQ 2"`. Walkers must track the current scope to attribute correctly. |
 | `0xCD` | DATA (varint + bytes) | TimeMarker name | Null-terminated UTF-16LE | User-set marker label. Scoped to the most-recently-announced time-marker (via `0x94`). |
 | `0xCF` | DATA (varint + bytes) | Project Artists | UTF-16LE string | Empty (2-byte null placeholder) on every committed fixture. **Not** the pattern-controllers opcode — an early mis-reading had the TS parser incorrectly pointing here until the parity harness caught it. Pattern controllers live at `0xDF`. |
@@ -175,8 +173,8 @@ parser's debug output):
 | `0x2B` | BYTE   | `0` × 500                                 | Per-track metadata flag; 500 matches FL 25's arrangement track count. |
 | `0x45`–`0x68` | WORD   | Various 16-bit values                    | Project-level parameters — to be mapped individually. |
 | `0x62` | WORD   | `0` × 180                                 | Per-insert flag. |
-| `0x80`–`0xAC` | DWORD  | Various 32-bit values                    | Includes build number (`0x9F`) and others TBD. |
-| `0xC0` | DATA   | 212-byte blob                             | Compound project-properties blob (FL 25 format). Inner structure: nested event stream. Decoding planned in Phase 3.3. |
+| `0x80`–`0xBF` | DWORD  | Various 32-bit values                    | Includes build number (`0x9F`) and others TBD. `0xAC` is overridden to `byte3` (see §2.2). |
+| `0xC0` | DATA   | UTF-16 banner; or larger opaque blob      | First `0xC0` in FL 25 minimal saves is the version banner (§3.1). Larger `0xC0` payloads — documented by PyFLP as a compound project-properties blob — remain undecoded; planned in Phase 3.3. |
 | `0xC7` | DATA   | 12-byte ASCII                             | FL version (above). |
 | `0xD5` | DATA   | Variable (354 B for EQ2, up to ~16 KB for Serum) | Plugin state blob. One event per plugin instance. Inner format is plugin-specific. The first 4 bytes of a VST-hosting `0xD5` payload encode an FL-serialization version marker; catalog lives in `fl25-event-format.md`. |
 | `0xE1` | DATA   | 6924-byte blob on `base_empty.flp`        | Mixer parameter packing. Layout is sparse on FL 25 (some insert indices empty); full decoding planned in Phase 3.3. |
@@ -200,11 +198,11 @@ down the writing FL version with high confidence:
    this is `4960`.
 2. **`0xC7` (confirmed)** — ASCII version string, null-terminated.
    `"25.2.4.4960"` on FL 25.2.4.
-3. **`0x36` (confirmed, FL25 override)** — UTF-16LE null-terminated
+3. **`0xC0` (confirmed, first occurrence)** — UTF-16LE null-terminated
    banner, e.g. `"FL Studio 25.2.4.4960.4960"`.
 
 For tooling that needs a canonical version tag, prefer the ASCII string
-at `0xC7` (shortest, stable, parseable). The UTF-16 banner at `0x36`
+at `0xC7` (shortest, stable, parseable). The UTF-16 banner at `0xC0`
 is human-readable and suitable for display.
 
 Additionally, the first byte of a `0xD5` VST-hosting payload is an
@@ -228,7 +226,7 @@ function parse(bytes):
     while cursor < data_end:
         opcode = read uint8
         if opcode in FL25_OVERRIDES:
-            payload = read per override rule (e.g. utf16_zterm)
+            payload = read per override rule (e.g. byte3 = 3 raw bytes)
             events.push(blob event)
         elif opcode < 0x40:
             events.push(u8 event with value = read uint8)
@@ -268,12 +266,10 @@ committed fixtures, (b) `fl25-event-format.md` (itself sourced from
 harness sweeps), and (c) running the shipping FL Studio 25.2.4
 application.
 
-No code was copied from any GPL FLP library. One cross-check during
-development: an existing override table was read to confirm the
-encoding rule for opcode `0x36` (`utf16_zterm`, no size prefix)
-after two self-derived hypotheses (varint-prefixed, uint16-prefixed)
-both looked plausible but failed to align against tempo. That
-cross-check was for a **format fact**, not code or structure; the
+No code was copied from any GPL FLP library. Cross-checks against
+existing GPL override tables were used to confirm format facts
+(opcode → size-rule mappings, e.g. the FL 25 deviations). Those
+checks are for **format facts**, not code or structure; the
 implementation in this repo is independently written and uses a
 different data model, different naming, and a different control flow.
 
@@ -294,6 +290,10 @@ Future additions to this spec should follow the same pattern:
   opcode-range rule, `utf16_zterm` FL 25 override for `0x36`, and
   confirmed opcodes `0x9C` / `0x9F` / `0xC7` / `0x36`. Observed
   opcodes listed for orientation.
+- **2026-05-02** — Issue #1 (Holzchopf) corrected the FL 25 banner
+  classification. The override is now `byte3` for `0xAC` (3-byte
+  payload) instead of `utf16_zterm` for `0x36`; the version banner
+  is a standard `0xC0` TEXT event (varint-prefixed UTF-16LE).
 - **2026-04-18** (later) — Added `0x40` (new-channel marker) and
   `0x15` (channel type) to the confirmed catalog. Channel-kind
   value table (0/2/3/4/5) documented. Boundary rule captured:

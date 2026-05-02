@@ -8,11 +8,11 @@ saves. Tested against **FL Studio 25.2.4 Producer Edition
 
 FL 25 introduced new event opcodes that **do not follow the standard
 opcode-range sizing rules** (BYTE 0–63 → 1B payload, WORD 64–127 →
-2B, DWORD 128–191 → 4B, TEXT/DATA 192–255 → varint-prefixed).
-Several opcodes in the BYTE range (`0x36`) and DWORD range (`0xC0`)
-carry variable-length payloads in FL 25. Without correct event
-partitioning, downstream parsing fails — events get fragmented into
-many bogus small ones, corrupting everything that follows.
+2B, DWORD 128–191 → 4B, TEXT/DATA 192–255 → varint-prefixed). At
+least one opcode in the DWORD range (`0xAC`) carries a 3-byte
+payload, not 4. Without correct event partitioning, downstream
+parsing fails — the 0xAC misparse swallows the next event's opcode
+byte, corrupting the rest of the stream.
 
 This doc catalogs the FL 25 deviations and how the TS parser handles
 them via its override table.
@@ -37,7 +37,7 @@ specific minimal-project shape. Larger projects with content before
 the tempo field will push the offset around. Tempo's position is
 **inside some event's payload**, not a file-header field. Finding
 that enclosing event requires correctly parsing the event stream.
-Once `0x36` and `0xC0` are handled correctly the unified `0x9C`
+Once `0xAC`'s 3-byte sizing is handled correctly the unified `0x9C`
 tempo event surfaces as a normal DWORD event and `tempo / 1000`
 gives the right BPM.
 
@@ -52,46 +52,47 @@ Standard event categorisation:
 192-255  TEXT/DATA → VarInt size prefix + payload
 ```
 
-This works for FL 12-24. For FL 25, at least two opcodes violate the
-range convention. Catalogue so far (from inspecting `base_empty.flp`):
+This works for FL 12-24. For FL 25, `0xAC` violates the range
+convention. Catalogue so far (from inspecting `base_empty.flp`):
 
-### `0x36` — variable-length UTF-16 string (FL major version string)
+### `0xAC` — 3-byte payload (DWORD-range violation)
 
-**Range rule says**: BYTE, 1-byte payload.
-**Actually**: carries a ~70-byte UTF-16-LE string (`"FL Studio
-Producer Edition v25.2.4\0"`) prefixed with a 1-byte size.
+**Range rule says**: DWORD, 4-byte payload.
+**Actually**: 3-byte payload, no size prefix.
 
-Evidence: bytes 53-124 in any normalized FL 25 save decode as:
+Evidence (event stream from `base_empty.flp`, FL 25.2.4 build 4960):
 
 ```
-byte 53: 0x36       (opcode)
-byte 54: 0x46       (= 70, the payload size in bytes)
-bytes 55-124: UTF-16-LE "L Studio Producer Edition v25.2.4\0"
-             — 70 bytes = 35 UTF-16 code units
+byte 48: ac           (opcode)
+bytes 49-51: 01 01 00 (3-byte payload, semantic content TBD)
+byte 52: c0           (next opcode — TEXT range, version banner)
+byte 53: 36           (varint length = 54)
+bytes 54-107: UTF-16-LE "FL Studio 25.2.4.4960.4960\0"
+              — 54 bytes = 27 UTF-16 code units
 ```
 
-Naïve range-rule parsing reads byte 53 as "opcode 0x36 with 1-byte
-payload = 0x46", then byte 55 as "opcode 0x00 with 1-byte payload =
-0x4c" (the 'L'), and so on — fragmenting the one string into 35
-fake "BYTE events" each carrying one character.
+Naïve 4-byte parsing of `0xAC` consumes byte 52 (`0xC0`) as part of
+the payload, then reads byte 53 (`0x36`) as the next opcode. `0x36`
+in the BYTE range nominally takes a 1-byte payload — which would
+fragment the version banner into ~27 fake BYTE events. The TS
+parser previously hid this by overriding `0x36` as a
+`utf16_zterm` opcode (read until `00 00`); both interpretations
+consume the same byte range but the event identity was wrong. See
+issue #1 for the discovery.
 
-Note the 'F' of "FL Studio" lives in byte 54 (the size byte,
-decimally 70, hex `0x46` — ASCII 'F'; a confusing coincidence).
+The TS parser now treats `0xAC` as a 3-byte blob (override table
+in `src/parser/event.ts`). The version banner falls out as a normal
+`0xC0` TEXT event with varint-prefixed UTF-16-LE payload — no
+override needed.
 
-The TS parser handles this via the `utf16_zterm` override (see
-`flp-format-spec.md` §2.2).
+### `0xC0` — historical note
 
-### `0xC0` — compound project-properties blob
-
-**Range rule says**: TEXT/DATA, VarInt size prefix (size decodes
-correctly as 212 bytes).
-**Problem**: an FL-25-aware parser must NOT decode the 212-byte
-payload as a UTF-16 string — it isn't text, it's a nested event
-stream of project properties (tempo, loop mode, time signature,
-pan law, etc.).
-
-The TS parser treats `0xC0` as an opaque blob; inner-stream
-decoding is deferred until a use case lands.
+`0xC0` (TEXT range, VarInt size + payload) was reused for per-channel
+UTF-16 names through FL 24. In FL 25 minimal saves the first `0xC0`
+event is the project's UTF-16 version banner; PyFLP additionally
+documents larger `0xC0` payloads on FL 25 saves as an opaque
+project-properties blob. `getFLVersionBanner` disambiguates by
+requiring the decoded UTF-16 string to start with "FL Studio".
 
 ## Why this matters for flpdiff
 
@@ -122,9 +123,9 @@ not part of this TS package). Method:
    whatever event starts at a nearby offset and whose size is
    consistent across all sweep values.
 4. When a candidate event's opcode + nominal size rule would
-   underrun or overrun a reasonable payload (e.g., `0x36` in BYTE
-   range trying to hold 70 bytes), you've found a range-rule
-   violation.
+   underrun or overrun a reasonable payload (e.g., `0xAC` in DWORD
+   range whose "4th byte" is always the next event's opcode),
+   you've found a range-rule violation.
 
 Keep a catalog: `opcode → actual size rule → semantic field`.
 Add new entries to the override table in `src/parser/event.ts`.
@@ -200,7 +201,12 @@ deferred.
 
 - **2026-04-16** — Initial version. Tempo at bytes 155-158 as
   `bpm × 1000` u32 LE. Documented `0x36` and `0xC0` range-rule
-  violations.
+  violations (later corrected — see 2026-05-02).
+- **2026-05-02** — Issue #1 (Holzchopf) corrected the FL 25 banner
+  classification: `0x36` is NOT an opcode; it's the varint length
+  byte of a `0xC0` TEXT-range event. The real range-rule violation
+  is `0xAC`, which carries a 3-byte (not 4-byte) payload. Override
+  table now: `{0xAC: byte3}`; `0x36` removed.
 - **2026-04-17** — Tempo end-to-end via the existing `0x9C` opcode
   once the FL 25 overrides realign the event stream. `0xE1`
   MixerParams sparse-packing documented.

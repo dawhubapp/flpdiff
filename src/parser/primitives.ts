@@ -104,8 +104,8 @@ export class Utf16LeStringSchema extends Schema<string> {
 export const utf16LeString: Utf16LeStringSchema = new Utf16LeStringSchema();
 
 /**
- * UTF-8 null-terminated string. Used by a small number of newer opcodes
- * (e.g. 0x36 FL25 version string) that carry ASCII/UTF-8 payloads instead
+ * UTF-8 null-terminated string. Used by a small number of opcodes
+ * (e.g. 0xC7 FL25 ASCII version) that carry ASCII/UTF-8 payloads instead
  * of the usual UTF-16.
  */
 export class Utf8NullTermStringSchema extends Schema<string> {

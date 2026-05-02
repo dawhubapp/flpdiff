@@ -27,39 +27,29 @@ export type FLPEvent =
 
 /**
  * Size rules for opcodes that deviate from the standard opcode-range
- * encoding in FL Studio 25 and later. Each entry maps the opcode to
- * how its payload is delimited.
+ * encoding. Each entry maps the opcode to how its payload is delimited.
  *
- *   utf16_zterm — UTF-16LE text, null-terminated (``00 00`` at an even
- *                 offset), NO size prefix. The payload as captured
- *                 retains the terminator (consumers can strip).
- *
- * Sourced from the format-spec pipeline: empirical byte-inspection of
- * minimal FL 25 base projects. Pre-FL-25 files do not emit these
- * opcodes, so applying the override unconditionally is safe.
+ *   byte3 — fixed 3-byte payload (no size prefix). Captured as a blob
+ *           since the semantic content is not yet decoded.
  *
  * Currently known:
- *   0x36 — utf16_zterm, the FL version banner. Lives in the 0x00-0x3F
- *          "1-byte payload" range but carries a variable-length string;
- *          the first byte after the opcode is the LOW byte of the
- *          first UTF-16LE code unit (e.g. 0x46 = 'F' of "FL Studio…"),
- *          not a length prefix.
+ *   0xAC — byte3. Falls in the 0x80-0xBF "4-byte payload" range under
+ *          the classic rule, but actually carries 3 bytes. Treating it
+ *          as 4 bytes consumes the next event's opcode byte, which on
+ *          FL 25 happens to be 0xC0 (the version banner). The misparse
+ *          coincidentally aligns because the version banner's varint
+ *          length byte (0x36) was historically misread as a separate
+ *          opcode with a UTF-16-zero-terminated payload — both
+ *          interpretations consume the same byte range, but the
+ *          opcode/event identity was wrong. See issue #1 for the
+ *          discovery and `docs/fl-format/fl25-event-format.md` for
+ *          evidence.
  */
-export type FL25SizeRule = "utf16_zterm";
+export type FL25SizeRule = "byte3";
 
 export const FL25_OVERRIDES: ReadonlyMap<number, FL25SizeRule> = new Map<number, FL25SizeRule>([
-  [0x36, "utf16_zterm"],
+  [0xac, "byte3"],
 ]);
-
-function readUtf16ZTerm(input: ISerialInput): Uint8Array {
-  const bytes: number[] = [];
-  while (true) {
-    const lo = input.readUint8();
-    const hi = input.readUint8();
-    bytes.push(lo, hi);
-    if (lo === 0 && hi === 0) return new Uint8Array(bytes);
-  }
-}
 
 /**
  * Reads one FLP TLV event. Opcode-range encodes payload length:
@@ -78,8 +68,8 @@ export class FLPEventSchema extends Schema<FLPEvent> {
         { opcode, pathFragment: `0x${opcode.toString(16).toUpperCase().padStart(2, "0")}` },
         () => {
           const override = FL25_OVERRIDES.get(opcode);
-          if (override === "utf16_zterm") {
-            return { kind: "blob", opcode, payload: readUtf16ZTerm(input) };
+          if (override === "byte3") {
+            return { kind: "blob", opcode, payload: readBytes(input, 3) };
           }
           if (opcode >= 0xc0) {
             const len = varInt.read(input);
@@ -114,8 +104,12 @@ export class FLPEventSchema extends Schema<FLPEvent> {
         return;
       case "blob": {
         const override = FL25_OVERRIDES.get(value.opcode);
-        if (override === "utf16_zterm") {
-          // Payload captured with trailing 0x00 0x00; write as-is.
+        if (override === "byte3") {
+          if (value.payload.byteLength !== 3) {
+            throw new Error(
+              `byte3 opcode 0x${value.opcode.toString(16)} expects 3-byte payload, got ${value.payload.byteLength}`,
+            );
+          }
           for (const b of value.payload) output.writeUint8(b);
           return;
         }
@@ -138,8 +132,8 @@ export class FLPEventSchema extends Schema<FLPEvent> {
         return measurer.add(5);
       case "blob": {
         const override = FL25_OVERRIDES.get(ev.opcode);
-        if (override === "utf16_zterm") {
-          return measurer.add(1 + ev.payload.byteLength);
+        if (override === "byte3") {
+          return measurer.add(1 + 3);
         }
         const m = varInt.measure(ev.payload.byteLength, measurer);
         return m.add(1 + ev.payload.byteLength);

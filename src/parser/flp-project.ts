@@ -120,21 +120,24 @@ export function parseFLPFile(buffer: ArrayBufferLike): FLPProject {
 }
 
 /**
- * Pick the FL Studio version banner carried in opcode 0x36 (FL 25+).
+ * Pick the FL Studio version banner carried in opcode 0xC0 (FL 25+).
  *
- * Opcode 0x36 is one of the FL25 range-rule overrides — treated as a
- * varint-prefixed blob despite falling in the 0x00-0x3F "1-byte payload"
- * range. Payload is UTF-16LE, null-terminated, typically of the form
- * "L Studio Producer Edition v25.2.4" (note the leading 'F' of
- * "FL Studio" is coincidentally consumed by the length byte in a
- * minimal project, per docs/fl25-event-format.md).
+ * 0xC0 is the canonical TEXT/DATA range start (varint-prefixed payload).
+ * In FL 25 minimal saves the first 0xC0 event is a UTF-16LE,
+ * null-terminated string of the form "FL Studio 25.2.4.4960.4960\0".
+ * Pre-FL-25 files reused 0xC0 for per-channel UTF-16 names; we
+ * disambiguate by requiring the decoded string to start with
+ * "FL Studio".
  *
- * Returns undefined for pre-FL-25 files, which do not emit opcode 0x36.
+ * Returns undefined when no qualifying 0xC0 event exists.
  */
 export function getFLVersionBanner(project: FLPProject): string | undefined {
-  const ev = project.events.find((e) => e.kind === "blob" && e.opcode === 0x36);
-  if (!ev || ev.kind !== "blob") return undefined;
-  return decodeUtf16LeBytes(ev.payload);
+  for (const e of project.events) {
+    if (e.kind !== "blob" || e.opcode !== 0xc0) continue;
+    const decoded = decodeUtf16LeBytes(e.payload);
+    if (decoded.startsWith("FL Studio")) return decoded;
+  }
+  return undefined;
 }
 
 /**

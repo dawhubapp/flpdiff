@@ -55,6 +55,33 @@ describe("FL 25 public corpus — headline parity", () => {
     expect(kinds.has("u32")).toBe(true);
     expect(kinds.has("blob")).toBe(true);
   });
+
+  // Regression for issue #1: the FL version banner is a 0xC0 (TEXT range)
+  // event with varint-prefixed UTF-16LE payload — NOT a 0x36 utf16_zterm
+  // event. The two interpretations consume the same byte range, but the
+  // event identity differs. We assert: (a) a 0xC0 blob carrying the banner
+  // exists, (b) no 0x36 blob masquerades as the banner, (c) 0xAC carries
+  // a 3-byte payload.
+  test.each(FIXTURES)("%s: banner sits on opcode 0xC0, 0xAC is 3-byte", async (name) => {
+    const buf = await loadFLP(name);
+    const project = parseFLPFile(buf);
+
+    const c0 = project.events.find(
+      (e) => e.kind === "blob" && e.opcode === 0xc0,
+    );
+    expect(c0).toBeDefined();
+    expect(c0?.kind).toBe("blob");
+
+    const stray0x36Blob = project.events.find(
+      (e) => e.kind === "blob" && e.opcode === 0x36,
+    );
+    expect(stray0x36Blob).toBeUndefined();
+
+    const ac = project.events.find((e) => e.opcode === 0xac);
+    expect(ac).toBeDefined();
+    expect(ac?.kind).toBe("blob");
+    if (ac?.kind === "blob") expect(ac.payload.byteLength).toBe(3);
+  });
 });
 
 test("FLPParseError carries byte-offset + path context on corrupt input", () => {

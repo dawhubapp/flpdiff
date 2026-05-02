@@ -102,8 +102,8 @@ does not handle UTF-16 encoding or null termination.
   for unpaired surrogates (see Phase 1.2.6 fork patches in the Python
   repo). Wrong surrogate pairs appear in real files saved by older FL
   versions; strict decoding loses data.
-- Separate sub-schema `Utf8NullTermStringSchema` for the rare 0x36-style
-  opcode that uses UTF-8.
+- Separate sub-schema `Utf8NullTermStringSchema` for opcodes that
+  carry ASCII/UTF-8 strings (e.g. `0xC7` FL ASCII version).
 
 ### `FLPEventSchema`
 
@@ -307,24 +307,13 @@ Each of these is a 5-minute check during 3.1.2, not a decision.
 ## Update (2026-04-18) — FL 25 override mechanism landed
 
 First Phase 3.1.2 wiring pass revealed a size encoding beyond the
-opcode-range-based scheme documented above.
-
-**Discovery.** Opcode `0x36` carries the FL version banner as
-UTF-16LE text terminated by a double-null `00 00` at an even offset,
-with **no length prefix at all**. The `0x46` byte immediately after
-the opcode is the low byte of the first UTF-16 code unit (`F` of
-`FL Studio…`), not a size field. Initial hypotheses (varint-prefixed,
-then uint16-LE-prefixed) both looked plausible until tempo parsing
-refused to align; the actual encoding came from cross-checking the
-Python fork's `_fl25_overrides.py` table, which we are allowed to
-read for *format facts* (no code copied).
-
-**Design response.** Added a per-opcode size-rule table:
+opcode-range-based scheme documented above. The override table is
+per-opcode and consulted before the range rule.
 
 ```ts
-export type FL25SizeRule = "utf16_zterm";
+export type FL25SizeRule = "byte3";
 export const FL25_OVERRIDES: ReadonlyMap<number, FL25SizeRule> =
-  new Map<number, FL25SizeRule>([ [0x36, "utf16_zterm"] ]);
+  new Map<number, FL25SizeRule>([ [0xac, "byte3"] ]);
 ```
 
 `FLPEventSchema.read()` consults this table before falling back to
@@ -336,8 +325,24 @@ that `FLPEventSchema` uses to pick a length-encoding strategy.
 Future overrides (e.g., additional FL-25-specific opcodes discovered
 via RE sweeps) extend this map by adding a `SizeRule` variant and a
 branch in `FLPEventSchema.read()`. The format-spec doc (Phase 3.1.3)
-will host the canonical catalog of what each overridden opcode
-means semantically.
+hosts the canonical catalog of what each overridden opcode means
+semantically.
+
+## Update (2026-05-02) — FL 25 banner re-classification
+
+Issue #1 (Holzchopf) corrected the original FL 25 banner override.
+The earlier reading was: `0x36` is the opcode, override rule
+`utf16_zterm`. The corrected reading is: `0x36` is the **varint
+length** byte of a `0xC0` TEXT-range event whose payload is the
+UTF-16LE banner. The real range-rule violation is `0xAC`, which
+carries 3 bytes (not 4 as DWORD predicts). Both interpretations
+consume the same byte range — that's why downstream parsing worked
+either way — but the event identity was wrong.
+
+The override is now `{0xAC: byte3}`; the `utf16_zterm` rule has
+been removed. `getFLVersionBanner` now reads the first `0xC0` blob
+whose decoded UTF-16 starts with `"FL Studio"`. See
+`docs/fl-format/fl25-event-format.md` for the byte-level evidence.
 
 **Tempo smoke test is green** on `base_empty.flp`: version banner
 `"FL Studio 25.2.4.4960.4960"`, PPQ 96, tempo 120 BPM (opcode 0x9C,
